@@ -8,18 +8,29 @@ Created on Tue Sep 27 22:52:30 2022
 from spynal import matIO, spikes, utils
 from spynal.matIO import loadmat
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
 
 spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = \
     loadmat('/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat',
         variables=['spikeTimes','spikeTimesSchema','unitInfo','trialInfo', 'sessionInfo', 'spikeWaves', 'spikeWavesSchema'],
         typemap={'unitInfo':'DataFrame', 'trialInfo':'DataFrame'})\
-                
+#%%
 for i in range(spike_times.shape[0]):
    for j in range(spike_times.shape[1]):
-       spike_times[i,j] = np.atleast_1d(spike_times[i,j])
+       spike = spike_times[i,j]
+       trunc_spike = trunc_spike = (-1 < spike) & (spike < 2)
+       if spike[trunc_spike]:
+           spike_times[i,j] = np.atleast_1d(spike[trunc_spike])
+       else:
+           spike_times[i,j] = []
 
 for i in range(spike_waves.shape[0]):
    for j in range(spike_waves.shape[1]):
+       wave = spike_waves[i,j]
+       trunc_wave = (-1 < wave) & (wave < 2)
+       spike_waves[i,j] = np.atleast_1d(wave[trunc_wave])
        if len(np.shape(spike_waves[i,j])) == 1:
            spike_waves[i,j] = np.expand_dims(spike_waves[i,j], 1)
        
@@ -77,10 +88,28 @@ def neuronSelection(spike_times, trials_keep):
         if num_shorts/total_isi >= 0.1:
             neurons_keep = np.delete(neurons_keep, neuron) #don't keep the neuron           
     
-    return neurons_keep, meanRates, ms_ISI
+    newrates, newpts = spikes.rate(valid_spikes, method='bin', lims = [-1, 2])
+    newmeanRates = np.mean(np.mean(newrates, axis = 2), axis = 0)
+    newmeanRates = np.expand_dims(newmeanRates, axis=0)
+    
+    return neurons_keep, newmeanRates, ms_ISI
 
 def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_subset_indices = None):
-    #truncate for -1 to 2 ms
+    '''
+    Gets the mean-aligned waveform from data. 
+        
+        Input: spikeWaves (n_trials, n_units) object array for single session
+               spikeWavesSchema: 
+               trials_keep: all valid trials
+               neurons_keep: all valid units
+               trial_subset_indices: optional subset of (valid) trials of interest
+               
+        Output: meanAlignWaves (n_trials, n_units): aligned mean waveforms for each unit
+                smpRate: 10x interpolated sampling rate
+                
+    '''
+    
+    #TODO: truncate for -1 to 2 ms
     if trial_subset_indices: #if we pass in some subset
         valid_waves = spike_waves[np.ix_(trial_subset_indices, neurons_keep)]
     else: 
@@ -114,7 +143,6 @@ def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_
             waves_interp[:, spike_idx] = newSpike
             
         # new waves_interp with aligned spikes
-        
         meanAlignWave = np.mean(waves_interp, axis=1) #take mean of all spikes
         meanAlignWaves[:, neuron] = meanAlignWave
         
@@ -122,6 +150,22 @@ def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_
         
     return meanAlignWaves, smpRate
 
+def LV(ISIs):
+    n_trials, n_units = np.shape(ISIs)
+    allLV = np.zeros((1, n_units))
+    
+    for neuron in range(n_units):
+        neuronLV = np.zeros((n_trials,))
+        for trial in range(n_trials): 
+            if len(ISIs[trial, neuron]) <= 1: #if there are no ISIs to compare against each other
+                neuronLV[trial] = float('NaN')
+            else: 
+                LV = spikes.isi_stats(ISIs[trial, neuron], stat='LV')
+                neuronLV[trial] = LV
+        meanLV = np.nanmean(neuronLV, axis=0)
+        allLV[:, neuron] = meanLV
+    return allLV
+    
 def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema):
     validTrials = trialSelection(trial_info, session_info)
     validNeurons, meanRates, ISIs = neuronSelection(spike_times, validTrials)
@@ -129,30 +173,33 @@ def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_wave
     
     return validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate
 
-def featExtract(meanRates, ISIs, meanAlignWaves, smpRate):
-    #wrap all features in a pandas dataframe
+def featExtract(meanRates, ISIs, meanAlignWaves, smpRate):    
+    '''
+    Extracts features of interest from data. 
+        
+        Input: meanRates (n_units): mean spike rates for each unit 
+               ISIs (n_trials, n_units): ISIs for each trial and unit
+               meanAlignWaves (n_timepts, n_units): mean aligned wave for each unit
+               smpRate: 10x interpolated sampling rate
+        Output: featuresDF: dataframe containing features of interest
+                            meanRates, troughToPeak, repolTime, CV, LV
+
+    '''
     
     troughToPeak = spikes.waveform_stats(meanAlignWaves, stat='width', smp_rate=smpRate) #axis is 0?
     repolTime = spikes.waveform_stats(meanAlignWaves, stat='repolarization', smp_rate=smpRate)
     
     CV = spikes.rate_stats(meanRates, stat='CV')
-    LV = spikes.isi_stats(ISIs, stat='LV')
+    allLV = LV(ISIs)
     
-    return troughToPeak, repolTime, CV, LV
+    features = {'meanRates': meanRates.tolist(), 'troughToPeak':troughToPeak.tolist(), 'repolTime': repolTime.tolist(), 'CV': CV, 'LV': allLV.tolist()}
+    featuresDF = pd.DataFrame(data=features)
+    
+    return featuresDF
 
 def main():     
-    #import matplotlib.pyplot as plt
-    #import pandas as pd
-    #from scipy.signal import find_peaks
-           
     validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
-    print('all valid trials ', validTrials)
-    print('all valid neurons ', validNeurons)
-    print('meanRates ', meanRates)
-    print('ISIs ', ISIs)
-    print('meanAlignWaves ', meanAlignWaves)
-    troughToPeak, repolTime, CV, LV = featExtract(meanRates, ISIs, meanAlignWaves, smpRate)
-    
+    featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate)
 
 if __name__ == "__main__":
     main()
