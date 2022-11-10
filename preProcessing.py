@@ -5,34 +5,32 @@ Created on Tue Sep 27 22:52:30 2022
 
 @author: huange
 """
-from spynal import matIO, spikes, utils
+from spynal import spikes, utils
 from spynal.matIO import loadmat
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
 
-spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = \
-    loadmat('/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat',
-        variables=['spikeTimes','spikeTimesSchema','unitInfo','trialInfo', 'sessionInfo', 'spikeWaves', 'spikeWavesSchema'],
-        typemap={'unitInfo':'DataFrame', 'trialInfo':'DataFrame'})\
-#%%
-for i in range(spike_times.shape[0]):
-   for j in range(spike_times.shape[1]):
-       spike = spike_times[i,j]
-       trunc_spike = trunc_spike = (-1 < spike) & (spike < 2)
-       if spike[trunc_spike]:
-           spike_times[i,j] = np.atleast_1d(spike[trunc_spike])
-       else:
-           spike_times[i,j] = []
-
-for i in range(spike_waves.shape[0]):
-   for j in range(spike_waves.shape[1]):
-       wave = spike_waves[i,j]
-       trunc_wave = (-1 < wave) & (wave < 2)
-       spike_waves[i,j] = np.atleast_1d(wave[trunc_wave])
-       if len(np.shape(spike_waves[i,j])) == 1:
-           spike_waves[i,j] = np.expand_dims(spike_waves[i,j], 1)
+# spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = \
+#     loadmat('/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat',
+#         variables=['spikeTimes','spikeTimesSchema','unitInfo','trialInfo', 'sessionInfo', 'spikeWaves', 'spikeWavesSchema'],
+#         typemap={'unitInfo':'DataFrame', 'trialInfo':'DataFrame'})\
+# #%%
+# for i in range(spike_times.shape[0]):
+#    for j in range(spike_times.shape[1]):
+#        spike = spike_times[i,j]
+#        wave = spike_waves[i,j]
+#        if type(spike) != float:
+#            trunc_spike = np.where((-1 < spike) & (spike < 2))[0]
+#            trunc_wave = wave[:, trunc_spike]
+#            spike_times[i,j] = np.atleast_1d(spike[trunc_spike])
+#            spike_waves[i,j] = np.atleast_2d(wave)
+#        else:
+#            if -1 < spike < 2:
+#                spike_times[i,j] = [spike]  
+#                spike_waves[i,j] = np.expand_dims(wave, 1)
+#            else:
+#                spike_times[i,j] = []
+#                spike_waves[i,j] = np.empty((48, 0))
        
 #%% 
 
@@ -92,7 +90,7 @@ def neuronSelection(spike_times, trials_keep):
     newmeanRates = np.mean(np.mean(newrates, axis = 2), axis = 0)
     newmeanRates = np.expand_dims(newmeanRates, axis=0)
     
-    return neurons_keep, newmeanRates, ms_ISI
+    return neurons_keep, newmeanRates, ms_ISI, newrates
 
 def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_subset_indices = None):
     '''
@@ -109,7 +107,6 @@ def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_
                 
     '''
     
-    #TODO: truncate for -1 to 2 ms
     if trial_subset_indices: #if we pass in some subset
         valid_waves = spike_waves[np.ix_(trial_subset_indices, neurons_keep)]
     else: 
@@ -168,12 +165,12 @@ def LV(ISIs):
     
 def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema):
     validTrials = trialSelection(trial_info, session_info)
-    validNeurons, meanRates, ISIs = neuronSelection(spike_times, validTrials)
+    validNeurons, meanRates, ISIs, rates = neuronSelection(spike_times, validTrials)
     meanAlignWaves, smpRate = waveAlign(spike_waves, spike_waves_schema, validTrials, validNeurons)
     
-    return validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate
+    return validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates
 
-def featExtract(meanRates, ISIs, meanAlignWaves, smpRate):    
+def featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates):    
     '''
     Extracts features of interest from data. 
         
@@ -189,17 +186,18 @@ def featExtract(meanRates, ISIs, meanAlignWaves, smpRate):
     troughToPeak = spikes.waveform_stats(meanAlignWaves, stat='width', smp_rate=smpRate) #axis is 0?
     repolTime = spikes.waveform_stats(meanAlignWaves, stat='repolarization', smp_rate=smpRate)
     
-    CV = spikes.rate_stats(meanRates, stat='CV')
+    mean_timepts = np.mean(rates, axis=2)
+    CV = spikes.rate_stats(mean_timepts, stat='CV', axis=0) #deal with timepts
     allLV = LV(ISIs)
     
-    features = {'meanRates': meanRates.tolist(), 'troughToPeak':troughToPeak.tolist(), 'repolTime': repolTime.tolist(), 'CV': CV, 'LV': allLV.tolist()}
+    features = {'meanRates': meanRates.tolist(), 'troughToPeak':troughToPeak.tolist(), 'repolTime': repolTime.tolist(), 'CV': CV.tolist(), 'LV': allLV.tolist()}
     featuresDF = pd.DataFrame(data=features)
     
     return featuresDF
 
 def main():     
-    validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
-    featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate)
+    validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
+    featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
 
 if __name__ == "__main__":
     main()
