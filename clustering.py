@@ -20,54 +20,7 @@ from statistics import mode
 from sklearn.preprocessing import StandardScaler
 import copy
 import seaborn as sns
-
-#%%
-
-def load_data(path):
-    spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = \
-    loadmat(path,
-        variables=['spikeTimes','spikeTimesSchema','unitInfo','trialInfo', 'sessionInfo', 'spikeWaves', 'spikeWavesSchema'],
-        typemap={'unitInfo':'DataFrame', 'trialInfo':'DataFrame'})\
-        
-    for i in range(spike_times.shape[0]):
-       for j in range(spike_times.shape[1]):
-           spike = spike_times[i,j]
-           wave = spike_waves[i,j]
-           if type(spike) != float:
-               trunc_spike = np.where((-1 < spike) & (spike < 2))[0]
-               trunc_wave = wave[:, trunc_spike]
-               spike_times[i,j] = np.atleast_1d(spike[trunc_spike])
-               spike_waves[i,j] = np.atleast_2d(trunc_wave)
-           else:
-               if -1 < spike < 2:
-                   spike_times[i,j] = [spike]  
-                   spike_waves[i,j] = np.expand_dims(wave, 1)
-               else:
-                   spike_times[i,j] = []
-                   spike_waves[i,j] = np.empty((48, 0))
-    
-    return spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema
-
-path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
-#path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-09192020-001.mat'
-#path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_SALINE_PFC-07052021-001.mat'
-spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
-#%%
-def select_area(unit_info, spike_times, spike_waves, area_name):
-    areas = unit_info['area'].to_numpy()
-    area_idx = np.where(areas == area_name)[0]
-    
-    spike_times = spike_times[:, area_idx]
-    spike_waves = spike_waves[:, area_idx]
-    return spike_times, spike_waves
-    
-    
-def cluster_plots(cluster_stats, all_params):
-    colors = ["blue", "orange", "turquoise", "purple"]
-    num_params = len(all_params)
-    fig, axes = plt.subplots(3, 2, figsize = (15, 15), tight_layout = True)
-    cluster_stats.boxplot(by = 'Cluster', return_type = 'axes', ax = axes)
-    pass
+from data_load import select_area, load_data, concat_sessions
 
 def GMM(features, num_reps):
     components = np.arange(2, 10) # 2-9 clusters
@@ -134,7 +87,10 @@ def GMM(features, num_reps):
 
 def main():    
     area = 'V4'
+    path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
+    spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
     area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
+    
     validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
     featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
     
@@ -148,10 +104,6 @@ def main():
     featuresDF['cluster_labels'] = min_labels
     sns.pairplot(featuresDF, hue = "cluster_labels", kind='scatter', 
                             diag_kind='kde')
-    
-    #featuresDF_params = featuresDF[all_params]
-    #featuresDF_params['Cluster'] = labels
-    #cluster_plots(featuresDF_params, all_params)
 
 if __name__ == "__main__":
     main()
