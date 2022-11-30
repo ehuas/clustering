@@ -19,6 +19,7 @@ from sklearn.mixture import GaussianMixture
 from statistics import mode
 from sklearn.preprocessing import StandardScaler
 import copy
+import seaborn as sns
 
 #%%
 
@@ -47,13 +48,20 @@ def load_data(path):
     
     return spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema
 
-from preProcessing import preProcessing, featExtract
-
-#path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
+path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
 #path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-09192020-001.mat'
-path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_SALINE_PFC-07052021-001.mat'
+#path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_SALINE_PFC-07052021-001.mat'
 spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
 #%%
+def select_area(unit_info, spike_times, spike_waves, area_name):
+    areas = unit_info['area'].to_numpy()
+    area_idx = np.where(areas == area_name)[0]
+    
+    spike_times = spike_times[:, area_idx]
+    spike_waves = spike_waves[:, area_idx]
+    return spike_times, spike_waves
+    
+    
 def cluster_plots(cluster_stats, all_params):
     colors = ["blue", "orange", "turquoise", "purple"]
     num_params = len(all_params)
@@ -62,7 +70,7 @@ def cluster_plots(cluster_stats, all_params):
     pass
 
 def GMM(features, num_reps):
-    components = np.arange(2, 24) # 2-9 clusters
+    components = np.arange(2, 10) # 2-9 clusters
     bics = np.zeros((num_reps, len(components)))
     aics = np.zeros((num_reps, len(components)))
     min_comps = []
@@ -91,23 +99,30 @@ def GMM(features, num_reps):
         plt.title('all bics, 40 reps')
     
     
-    plt.figure(1)
-    plt.boxplot(bics)
-    plt.figure(2)
-    plt.hist(min_comps)
+    # plt.figure(1)
+    # plt.boxplot(bics)
+    # plt.figure(2)
+    # plt.hist(min_comps)
     average_min_comp = mode(min_comps)
     print(min_comps)
     print(average_min_comp)
-    bics_mean = np.mean(bics, axis=0) #average per cluster (over reps)
-    aics_mean = np.mean(aics, axis=0)
-    plt.figure(3)
-    plt.plot(components, bics_mean)
-    plt.title('bics_mean')
-    plt.xlabel('cluster #')
-    plt.figure(4)
-    plt.plot(components, aics_mean)
-    plt.title('aics_mean')
-    plt.xlabel('cluster #')
+    gmm_min = GaussianMixture(2)
+    gmm_min.fit(features)
+    min_labels = gmm_min.predict(features)
+    
+    return gmm_min, min_labels
+    #plt.scatter(features[:, 0], features[:, 1], c=min_labels, s=40, cmap='viridis')
+    # bics_mean = np.mean(bics, axis=0) #average per cluster (over reps)
+    # aics_mean = np.mean(aics, axis=0)
+    # plt.figure(3)
+    # plt.plot(components, bics_mean)
+    # plt.title('bics_mean')
+    # plt.xlabel('cluster #')
+    # plt.figure(4)
+    # plt.plot(components, aics_mean)
+    # plt.title('aics_mean')
+    # plt.xlabel('cluster #')
+    
 # =============================================================================
 #    
 #     average_min_comp = mode(min_comps)
@@ -118,20 +133,21 @@ def GMM(features, num_reps):
 # =============================================================================
 
 def main():    
+    area = 'V4'
+    area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
     validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
     featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
     
     all_params = ['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV']
     
     cluster_stats = featuresDF[all_params].to_numpy()
-    num_params = len(all_params)
-    rows, = np.shape(featuresDF['meanRates'][0])
-    cluster_stats_new = np.zeros((rows, num_params))
-    for i in range(num_params):
-        cluster_stats_new[:, i] = cluster_stats[0, i]
-    scaler = StandardScaler() #do we need this
-    cluster_stats_norm = scaler.fit_transform(cluster_stats_new)
-    GMM(cluster_stats_norm, 40)
+    scaler = StandardScaler() 
+    cluster_stats_norm = scaler.fit_transform(cluster_stats)
+    gmm_min, min_labels = GMM(cluster_stats_norm, 40)
+    
+    featuresDF['cluster_labels'] = min_labels
+    sns.pairplot(featuresDF, hue = "cluster_labels", kind='scatter', 
+                            diag_kind='kde')
     
     #featuresDF_params = featuresDF[all_params]
     #featuresDF_params['Cluster'] = labels

@@ -10,30 +10,6 @@ from spynal.matIO import loadmat
 import numpy as np
 import pandas as pd
 
-# spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = \
-#     loadmat('/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat',
-#         variables=['spikeTimes','spikeTimesSchema','unitInfo','trialInfo', 'sessionInfo', 'spikeWaves', 'spikeWavesSchema'],
-#         typemap={'unitInfo':'DataFrame', 'trialInfo':'DataFrame'})\
-# #%%
-# for i in range(spike_times.shape[0]):
-#    for j in range(spike_times.shape[1]):
-#        spike = spike_times[i,j]
-#        wave = spike_waves[i,j]
-#        if type(spike) != float:
-#            trunc_spike = np.where((-1 < spike) & (spike < 2))[0]
-#            trunc_wave = wave[:, trunc_spike]
-#            spike_times[i,j] = np.atleast_1d(spike[trunc_spike])
-#            spike_waves[i,j] = np.atleast_2d(wave)
-#        else:
-#            if -1 < spike < 2:
-#                spike_times[i,j] = [spike]  
-#                spike_waves[i,j] = np.expand_dims(wave, 1)
-#            else:
-#                spike_times[i,j] = []
-#                spike_waves[i,j] = np.empty((48, 0))
-       
-#%% 
-
 def trialSelection(trial_info, session_info):
     '''
     Selects valid trials from data. 
@@ -51,8 +27,14 @@ def trialSelection(trial_info, session_info):
     trials_keep = np.where(beforeDrugTrials['correct'])[0]
 
     return trials_keep
+
+def trialsKeep(trials_keep, spike_times, spike_waves):
+    times_trials = spike_times[trials_keep, :]
+    waves_trials = spike_waves[trials_keep, :]
     
-def neuronSelection(spike_times, trials_keep):
+    return times_trials, waves_trials
+    
+def neuronSelection(times_trials):
     '''
     Selects valid neurons from data. 
         
@@ -63,36 +45,47 @@ def neuronSelection(spike_times, trials_keep):
         (a) having an overall mean spike rate > 1 spike/s (weeding out silent cells) and 
         (b) having < 0.1% ISIs within 1 ms (weeding out poorly isolated single neurons)
 
-    '''
-    valid_spikes = spike_times[trials_keep, :] #keeps only the valid trials 
-    
-    rates, timepts = spikes.rate(valid_spikes, method='bin', lims = [-1, 2])
+    '''    
+    rates, timepts = spikes.rate(times_trials, method='bin', lims = [-1, 2])
     meanRates = np.mean(np.mean(rates, axis = 2), axis = 0) #takes mean over all trials & timepts
     
     neurons_keep = np.where(meanRates > 1)[0] #find all indices where mean rate > 1
-    valid_spikes = valid_spikes[:, neurons_keep]
-    n_units = np.shape(neurons_keep)[0]
+    valid_spikes = times_trials[:, neurons_keep]
     
     allISIs = spikes.isi(valid_spikes)
     ms_ISI = np.multiply(allISIs, 1000)
-    flatAll = utils.concatenate_object_array(ms_ISI, 0) #every ISI per unit
+    flatAll = np.squeeze(utils.concatenate_object_array(ms_ISI, 0)) #every ISI per unit
     
-    for neuron in range(n_units):
-        shorts = np.where(flatAll[0, neuron] <= 1)[0] #all ISIs less than 1 ms for neuron
-        if np.size(shorts) >= 1:
-            print('flag')
+    for idx, neuron in enumerate(neurons_keep):
+        shorts = np.where(flatAll[idx] <= 1)[0] #all ISIs less than 1 ms for neuron
         num_shorts = np.size(shorts)
-        total_isi = np.size(flatAll[:, neuron][0])
+        total_isi = np.size(flatAll[idx])
         if num_shorts/total_isi >= 0.1:
-            neurons_keep = np.delete(neurons_keep, neuron) #don't keep the neuron           
+            neurons_keep = np.delete(neurons_keep, idx) #don't keep the neuron           
     
-    newrates, newpts = spikes.rate(valid_spikes, method='bin', lims = [-1, 2])
-    newmeanRates = np.mean(np.mean(newrates, axis = 2), axis = 0)
-    newmeanRates = np.expand_dims(newmeanRates, axis=0)
-    
-    return neurons_keep, newmeanRates, ms_ISI, newrates
+    return neurons_keep 
 
-def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_subset_indices = None):
+
+def neuronsKeep(neurons_keep, times_trials, waves_trials):
+    times_data = times_trials[:, neurons_keep]
+    waves_data = waves_trials[:, neurons_keep]
+    
+    return times_data, waves_data
+
+def rateData(time_data):
+    rates, timepts = spikes.rate(time_data, method='bin', lims = [-1, 2])
+    meanRates = np.mean(np.mean(rates, axis = 2), axis = 0)
+    meanRates = np.expand_dims(meanRates, axis=0)
+    
+    return meanRates, rates
+
+def isiData(time_data):
+    allISIs = spikes.isi(time_data)
+    ms_ISI = np.multiply(allISIs, 1000)
+    
+    return ms_ISI
+
+def waveAlign(waves_data, spike_waves_schema, trial_subset_indices = None):
     '''
     Gets the mean-aligned waveform from data. 
         
@@ -108,20 +101,19 @@ def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_
     '''
     
     if trial_subset_indices: #if we pass in some subset
-        valid_waves = spike_waves[np.ix_(trial_subset_indices, neurons_keep)]
-    else: 
-        valid_waves = spike_waves[np.ix_(trials_keep, neurons_keep)]
+        waves_data = waves_data[trial_subset_indices, :]
     
-    n_trials, n_units = np.shape(valid_waves)
+    n_trials, n_units = np.shape(waves_data)
+    timepts = spike_waves_schema['elemIndex'][0]
     
-    timepts = (np.shape(valid_waves[0, 0])[0]-1)*10
-    meanAlignWaves = np.zeros((timepts, n_units))
+    num_timepts = (np.size(timepts)-1)*10
+    meanAlignWaves = np.zeros((num_timepts, n_units))
     
     for neuron in range(n_units):
-        spikesAll = utils.concatenate_object_array(valid_waves[:, neuron], axis = 0, elem_axis = 1) #unexpected elem_axis
+        spikesAll = utils.concatenate_object_array(waves_data[:, neuron], axis = 0, elem_axis = 1) #unexpected elem_axis
         n_timepts, n_spikes = np.shape(spikesAll) #get # of time pts
-        x = np.arange(0, n_timepts)
-        xinterp = np.arange(0, n_timepts-1, 0.1) #keep length, divide step by 10
+        x = np.arange(1, n_timepts+1)
+        xinterp = np.arange(1, n_timepts, 0.1) #keep length, divide step by 10
         waves_interp = utils.interp1(x, spikesAll, xinterp, axis = 0)
         meanWave = np.mean(waves_interp, axis=1) #get mean waveform over all spikes
         meanTroughIdx = np.argmin(meanWave) #get mean trough idx
@@ -130,7 +122,7 @@ def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_
             spike = waves_interp[:, spike_idx]
             spikeTroughIdx = np.argmin(spike)
             diff = spikeTroughIdx - meanTroughIdx
-            newSpike = np.zeros(np.shape(spike))
+            newSpike = np.full(np.shape(spike), np.nan)
             if diff > 0: # if the spike's trough is shifted ahead of mean trough
                 newSpike[:-diff] = spike[diff:] #move it back
             elif diff < 0:
@@ -140,10 +132,10 @@ def waveAlign(spike_waves, spike_waves_schema, trials_keep, neurons_keep, trial_
             waves_interp[:, spike_idx] = newSpike
             
         # new waves_interp with aligned spikes
-        meanAlignWave = np.mean(waves_interp, axis=1) #take mean of all spikes
+        meanAlignWave = np.nanmean(waves_interp, axis=1) #take mean of all spikes
         meanAlignWaves[:, neuron] = meanAlignWave
         
-        smpRate = spike_waves_schema['smpRate']*10
+    smpRate = spike_waves_schema['smpRate']*10
         
     return meanAlignWaves, smpRate
 
@@ -164,11 +156,18 @@ def LV(ISIs):
     return allLV
     
 def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema):
-    validTrials = trialSelection(trial_info, session_info)
-    validNeurons, meanRates, ISIs, rates = neuronSelection(spike_times, validTrials)
-    meanAlignWaves, smpRate = waveAlign(spike_waves, spike_waves_schema, validTrials, validNeurons)
+    trials_keep = trialSelection(trial_info, session_info)
+    times_trials, waves_trials = trialsKeep(trials_keep, spike_times, spike_waves)
     
-    return validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates
+    neurons_keep = neuronSelection(times_trials)
+    time_data, waves_data = neuronsKeep(neurons_keep, times_trials, waves_trials)
+    
+    meanRates, rates = rateData(time_data)
+    ISIs = isiData(time_data)
+    
+    meanAlignWaves, smpRate = waveAlign(waves_data, spike_waves_schema)
+    
+    return trials_keep, neurons_keep, meanRates, ISIs, meanAlignWaves, smpRate, rates
 
 def featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates):    
     '''
@@ -190,14 +189,15 @@ def featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates):
     CV = spikes.rate_stats(mean_timepts, stat='CV', axis=0) #deal with timepts
     allLV = LV(ISIs)
     
-    features = {'meanRates': meanRates.tolist(), 'troughToPeak':troughToPeak.tolist(), 'repolTime': repolTime.tolist(), 'CV': CV.tolist(), 'LV': allLV.tolist()}
+    features = {'meanRates': np.squeeze(meanRates).tolist(), 'troughToPeak': np.squeeze(troughToPeak).tolist(), 'repolTime': np.squeeze(repolTime.tolist()), 'CV': np.squeeze(CV).tolist(), 'LV': np.squeeze(allLV).tolist()}
     featuresDF = pd.DataFrame(data=features)
     
     return featuresDF
 
 def main():     
-    validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
-    featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
+    #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
+    #featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
+    pass
 
 if __name__ == "__main__":
     main()
