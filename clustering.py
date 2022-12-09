@@ -9,18 +9,13 @@ Created on Thu Nov  3 16:14:04 2022
 import os
 os.chdir('/Users/huange/clustering')
 
-from spynal import spikes, utils
-from spynal.matIO import loadmat
-from preProcessing import preProcessing, featExtract
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 from statistics import mode
 from sklearn.preprocessing import StandardScaler
 import copy
 import seaborn as sns
-from data_load import select_area, load_data, concat_sessions
 
 def GMM(features, num_reps):
     components = np.arange(2, 10) # 2-9 clusters
@@ -86,13 +81,13 @@ def GMM(features, num_reps):
 # =============================================================================
 
 def main():    
-    area = 'V4'
-    path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
-    spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
-    area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
+    # area = '7A'
+    # path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
+    # spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
+    # area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
     
-    validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
-    featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
+    # validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
+    # featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
     
     all_params = ['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV']
     
