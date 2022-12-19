@@ -6,9 +6,6 @@ Created on Thu Nov  3 16:14:04 2022
 @author: huange
 """
 
-import os
-os.chdir('/Users/huange/clustering')
-
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
