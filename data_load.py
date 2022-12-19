@@ -12,6 +12,7 @@ from preProcessing import preProcessing, featExtract
 from sklearn.preprocessing import StandardScaler
 import seaborn as sns
 from clustering import GMM
+import os
 
 def select_area(unit_info, spike_times, spike_waves, area_name):
     areas = unit_info['area'].to_numpy()
@@ -60,22 +61,26 @@ def concat_sessions(paths, area):
         area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
         
         validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
-        featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
-        
-        allDF = pd.concat([allDF, featuresDF])
+        if validTrials.size < 2 or validNeurons.size < 2:
+            pass
+        else:
+            featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
+            allDF = pd.concat([allDF, featuresDF])
     
     return allDF
         
         
-
 def main(): 
     #path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
-    paths = ['/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-09192020-001.mat',
-              '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_SALINE_PFC-07052021-001.mat',
-              '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat']
-    #spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
+    directory = '/Volumes/common/scott/laminarPharm/mat'
+    paths = []
+    for filename in os.listdir(directory):
+        if filename == 'laminarPharm_databases.mat':
+            pass
+        else:
+            f = os.path.join(directory, filename)
+            paths.append(f)
     area = 'V4'
-    #area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
     
     allDF = concat_sessions(paths, area)
     

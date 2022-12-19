@@ -54,7 +54,11 @@ def neuronSelection(times_trials):
     
     allISIs = spikes.isi(valid_spikes)
     ms_ISI = np.multiply(allISIs, 1000)
-    flatAll = np.squeeze(utils.concatenate_object_array(ms_ISI, 0)) #every ISI per unit
+    concat = utils.concatenate_object_array(ms_ISI, 0)
+    if concat.size > 1:
+        flatAll = np.squeeze(utils.concatenate_object_array(ms_ISI, 0)) #every ISI per unit
+    else:
+        flatAll = concat[0]
     
     for idx, neuron in enumerate(neurons_keep):
         shorts = np.where(flatAll[idx] <= 1)[0] #all ISIs less than 1 ms for neuron
