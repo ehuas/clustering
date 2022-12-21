@@ -58,21 +58,22 @@ def concat_sessions(paths, area):
     
     for path in paths:
         spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
-        area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
+        #area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
         
-        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
+        #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
+        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
         if validTrials.size < 2 or validNeurons.size < 2:
             pass
         else:
             featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
-            allDF = pd.concat([allDF, featuresDF])
+            allDF = pd.concat([allDF, featuresDF], ignore_index=True)
     
     return allDF
         
         
 def main(): 
     #path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
-    directory = '/Volumes/common/scott/laminarPharm/mat'
+    directory = '/mnt/common/scott/laminarPharm/mat'
     paths = []
     for filename in os.listdir(directory):
         if filename == 'laminarPharm_databases.mat':
@@ -80,7 +81,7 @@ def main():
         else:
             f = os.path.join(directory, filename)
             paths.append(f)
-    area = 'V4'
+    area = 'vlPFC'
     
     allDF = concat_sessions(paths, area)
     
@@ -93,7 +94,8 @@ def main():
     
     allDF['cluster_labels'] = min_labels
     sns.pairplot(allDF, hue = "cluster_labels", kind='scatter', 
-                            diag_kind='kde')
+                            diag_kind='kde', palette = 'muted')
+
 
 if __name__ == "__main__":
     main()
