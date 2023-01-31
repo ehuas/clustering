@@ -140,8 +140,13 @@ def waveAlign(waves_data, spike_waves_schema, trial_subset_indices = None):
         meanAlignWaves[:, neuron] = meanAlignWave
         
     smpRate = spike_waves_schema['smpRate']*10
+    if waves_data.size != 0:
+        alignWaves = waves_interp
+    else:
+        alignWaves = np.zeros((num_timepts, n_units))
+
         
-    return meanAlignWaves, smpRate
+    return meanAlignWaves, smpRate, alignWaves
 
 def LV(ISIs):
     n_trials, n_units = np.shape(ISIs)
@@ -169,9 +174,9 @@ def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_wave
     meanRates, rates = rateData(time_data)
     ISIs = isiData(time_data)
     
-    meanAlignWaves, smpRate = waveAlign(waves_data, spike_waves_schema)
+    meanAlignWaves, smpRate, alignWaves = waveAlign(waves_data, spike_waves_schema)
     
-    return trials_keep, neurons_keep, meanRates, ISIs, meanAlignWaves, smpRate, rates
+    return trials_keep, neurons_keep, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves
 
 def featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates):    
     '''

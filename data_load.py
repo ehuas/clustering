@@ -6,12 +6,13 @@ Created on Wed Nov 30 13:25:19 2022
 @author: huange
 """
 from spynal.matIO import loadmat
+from spynal import utils
 import numpy as np
 import pandas as pd
 from preProcessing import preProcessing, featExtract
 from sklearn.preprocessing import StandardScaler
 import seaborn as sns
-from clustering import GMM
+from clustering import GMM, pairplot, feat_reduction
 import os
 
 def select_area(unit_info, spike_times, spike_waves, area_name):
@@ -55,21 +56,26 @@ def load_data(path):
 
 def concat_sessions(paths, area):
     allDF = pd.DataFrame(columns=['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV'])
+    allAlignWaves = np.empty((470, 0))
     
     for path in paths:
         spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
-        #area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
+        area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
         
-        #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
-        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
+        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
+        #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
         if validTrials.size < 2 or validNeurons.size < 2:
             pass
         else:
             featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
             allDF = pd.concat([allDF, featuresDF], ignore_index=True)
+            allAlignWaves = np.concatenate((allAlignWaves, meanAlignWaves), axis = 1)
     
-    return allDF
+    return allDF, meanAlignWaves, allAlignWaves
         
+def save_df(df):
+    os.makedirs('/home/ehua/clustering', exist_ok=True)
+    df.to_csv('/home/ehua/clustering/dlPFC_df.csv')
         
 def main(): 
     #path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
@@ -81,20 +87,23 @@ def main():
         else:
             f = os.path.join(directory, filename)
             paths.append(f)
-    area = 'vlPFC'
+    area = 'dlPFC'
     
-    allDF = concat_sessions(paths, area)
+    allDF, meanAlignWaves, allAlignWaves = concat_sessions(paths, area)
+    save_df(allDF)
+    allAlignWavesDF = pd.DataFrame(allAlignWaves)
+    allAlignWavesDF.to_csv('/home/ehua/clustering/allAlignWaves_dlPFC.csv')
     
-    all_params = ['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV']
+    # all_params = ['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV']
+   
+    # cluster_stats = allDF[all_params].to_numpy()
+    # scaler = StandardScaler() 
+    # cluster_stats_norm = scaler.fit_transform(cluster_stats)
     
-    cluster_stats = allDF[all_params].to_numpy()
-    scaler = StandardScaler() 
-    cluster_stats_norm = scaler.fit_transform(cluster_stats)
-    gmm_min, min_labels = GMM(cluster_stats_norm, 40)
+    # pairplot(allDF, cluster_stats_norm)
     
-    allDF['cluster_labels'] = min_labels
-    sns.pairplot(allDF, hue = "cluster_labels", kind='scatter', 
-                            diag_kind='kde', palette = 'muted')
+    # feat_reduction(allDF)
+    
 
 
 if __name__ == "__main__":
