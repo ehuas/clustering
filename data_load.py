@@ -64,6 +64,7 @@ def concat_sessions(paths, area):
         
         validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
         #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
+        print(smpRate)
         if validTrials.size < 2 or validNeurons.size < 2:
             pass
         else:

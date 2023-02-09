@@ -17,6 +17,7 @@ from sklearn.manifold import TSNE
 from matplotlib.ticker import NullFormatter
 from pylab import *
 import pandas as pd
+from spynal import spikes
 
 
 
@@ -80,31 +81,49 @@ def GMM(features, num_reps):
     # min_labels = gmm_min.predict(features)
     # return min_labels, average_min_comp
     
-def outlier_id(df, labels):
+def outlier_id(df, labels, comp_num, allAlignWaves):
     df['labels'] = labels
+    rows, cols = df.shape
     max_std = 2.5
     
-    troughToPeak = df['troughToPeak'].to_numpy()
-    repolTime = df['repolTime'].to_numpy()
-    ttp_std = np.std(troughToPeak)
-    ttp_mean = np.mean(troughToPeak)
-    ttp_std_filter = np.where(np.logical_or(troughToPeak < ttp_mean - (max_std*ttp_std), troughToPeak > ttp_mean + (max_std*ttp_std)), 1, 0)
-    rpt_std = np.std(repolTime)
-    rpt_mean = np.mean(repolTime)
-    rpt_std_filter = np.where(np.logical_or(repolTime < rpt_mean - (max_std*rpt_std), repolTime > rpt_mean + (max_std*rpt_std)), 1, 0)
+    outlier_col = np.empty((rows, ))
+    for i in range(comp_num):
+        cluster_units = df.loc[df['labels'] == i]
+        cluster_idx = cluster_units.index
+        cluster_waves = allAlignWaves[:, cluster_idx]
+        mean_wave = np.mean(cluster_waves, axis=1)
+        #ttp_mean = spikes.waveform_stats(mean_wave, stat='width', smp_rate=299999.99999999994)
+        #rpt_mean = spikes.waveform_stats(mean_wave, stat='repolarization', smp_rate=299999.99999999994)
+        
+        troughToPeak = cluster_units['troughToPeak'].to_numpy()
+        repolTime = cluster_units['repolTime'].to_numpy()
+        ttp_std = np.std(troughToPeak)
+        ttp_mean = np.mean(troughToPeak)
+        ttp_std_filter = np.where(np.logical_or(troughToPeak < ttp_mean - (max_std*ttp_std), troughToPeak > ttp_mean + (max_std*ttp_std)), 1, 0)
+        rpt_std = np.std(repolTime)
+        rpt_mean = np.mean(repolTime)
+        rpt_std_filter = np.where(np.logical_or(repolTime < rpt_mean - (max_std*rpt_std), repolTime > rpt_mean + (max_std*rpt_std)), 1, 0)
 
-
-    outlier_col = np.logical_or(ttp_std_filter, rpt_std_filter)    
-    outlier_idx = np.nonzero(outlier_col)
+        outlier_all = np.logical_or(ttp_std_filter, rpt_std_filter)    
+        
+        outlier_col[cluster_idx] = outlier_all
     
     df['outliers'] = outlier_col
-    return df, outlier_idx
+    return df
     
-def pairplot(labels_df, outliers_df):
-    sns.pairplot(labels_df, hue = "labels", kind='scatter', 
-                            diag_kind='kde', palette = 'muted')
-    sns.scatterplot(outliers_df=outliers_df[outliers_df["outliers"] == 1], x="x", y="y", color="crimson", label="outlier")
-    
+def pairplot(labels_df, outliers_df, comp_num, area, outlier=False):
+    all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
+    if outlier:
+        for i in range(comp_num):
+            cluster_units = outliers_df.loc[outliers_df['labels'] == i]
+            g = sns.pairplot(cluster_units, hue = "outliers", kind='scatter', 
+                                    diag_kind='kde', palette = 'muted',  x_vars = all_params, y_vars = all_params)
+            g.fig.suptitle(area + " outlier pairplot for comp " + i, y = 1.03, fontsize = 20)
+    else:
+        g = sns.pairplot(labels_df, hue = "labels", kind='scatter', 
+                                diag_kind='kde', palette = 'muted',  x_vars = all_params, y_vars = all_params)
+        g.fig.suptitle(area + " cluster pairplot", y = 1.03, fontsize = 20)
+        
 def hue_regplot(data, x, y, hue, palette=None, **kwargs):
     from matplotlib.cm import get_cmap
     
@@ -161,30 +180,38 @@ def feat_reduction(df, min_labels, area):
     # allDF_embedded = TSNE(n_components=2, learning_rate='auto',
     #                   init='random', perplexity=50).fit_transform(allDF)
     
-def plot_avg_wave(allAlignWaves, cluster_stats_df, cluster_labels, comp_num):
+def plot_avg_wave(allAlignWaves, df, labels, comp_num, area):
     f = plt.figure()
     f.set_figheight(20)
-    colors = ['c', 'm', 'g', 'y', 'b', 'r']
+    colors = ['xkcd:azure', 'mediumseagreen', 'tab:olive', 'xkcd:lavender', 'b', 'g']
     for i in range(comp_num):
-        cluster_units = cluster_stats_df.loc[cluster_stats_df['labels'] == i]
+        cluster_units = df.loc[df['labels'] == i]
         cluster_units_idx = cluster_units.index
+        outlier_idx = cluster_units.loc[cluster_units["outliers"] == 1].index
+        cluster_units_idx = list(set(cluster_units_idx) - set(outlier_idx))
         cluster_waves = allAlignWaves[:, cluster_units_idx]
+        outlier_waves = allAlignWaves[:, outlier_idx]
+        
         plt.subplot(comp_num, 1, i+1)
         plt.plot(cluster_waves, color = colors[i], alpha = 0.2)
         mean_wave = np.mean(cluster_waves, axis = 1)  
         plt.plot(mean_wave, color = 'k')
+        if outlier_waves.size != 0:
+            plt.plot(outlier_waves, color="crimson", alpha = 0.5)
+    f.suptitle(area + " cluster waveforms", y = 1.03, fontsize = 20)
     plt.show()
+    
 
 
 def main():    
-    area = '7A'
-    feat_df = pd.read_csv('/home/ehua/clustering/7A_df.csv', index_col = 0)
-    allAlignWaves_df = pd.read_csv('/home/ehua/clustering/allAlignWaves_7A.csv', index_col = 0)
+    area = 'PFC'
+    feat_df = pd.read_csv('/home/ehua/clustering/PFC_df.csv', index_col = 0)
+    allAlignWaves_df = pd.read_csv('/home/ehua/clustering/allAlignWaves_PFC.csv', index_col = 0)
     allAlignWaves = allAlignWaves_df.to_numpy()
     waves_ptp = allAlignWaves.ptp(axis = 0)
     allAlignWaves_norm = np.divide(allAlignWaves, waves_ptp)
     
-    all_params = ['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV']
+    all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
    
     cluster_stats = feat_df[all_params].to_numpy()
     scaler = StandardScaler() 
@@ -200,8 +227,9 @@ def main():
     
     #feat_reduction(feat_df, min_labels, area)
     
-    outliers_df, outlier_idx = outlier_id(feat_df, min_labels)
-    pairplot(labels_df, outliers_df)
+    outliers_df = outlier_id(feat_df, min_labels, comp_num, allAlignWaves_norm)
+    plot_avg_wave(allAlignWaves_norm, outliers_df, min_labels, comp_num, area)
+    pairplot(labels_df, outliers_df, comp_num, area)
 
 if __name__ == "__main__":
     main()
