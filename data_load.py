@@ -14,6 +14,8 @@ from sklearn.preprocessing import StandardScaler
 import seaborn as sns
 from clustering import GMM, pairplot, feat_reduction
 import os
+from analysis import *
+
 
 def select_area(unit_info, spike_times, spike_waves, area_name):
     areas = unit_info['area'].to_numpy()
@@ -56,27 +58,25 @@ def load_data(path):
 
 def concat_sessions(paths, area):
     allDF = pd.DataFrame(columns=['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV'])
+    allPEV = np.empty((0, 60))
     allAlignWaves = np.empty((470, 0))
     
     for path in paths:
         spike_times, spike_times_schema, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
         area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
         
-        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
+        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves, meanNeuronRate, blockRates, trialRates, predInfo, sampInfo = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema)
         #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
-        print(smpRate)
         if validTrials.size < 2 or validNeurons.size < 2:
             pass
         else:
             featuresDF = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
             allDF = pd.concat([allDF, featuresDF], ignore_index=True)
+            pev = pev_func(rates, sampInfo)
+            allPEV = np.concatenate((allPEV, np.squeeze(pev)), axis = 0)
             allAlignWaves = np.concatenate((allAlignWaves, meanAlignWaves), axis = 1)
     
-    return allDF, meanAlignWaves, allAlignWaves
-        
-def save_df(df):
-    os.makedirs('/home/ehua/clustering', exist_ok=True)
-    df.to_csv('/home/ehua/clustering/dlPFC_df.csv')
+    return allDF, meanAlignWaves, allPEV, allAlignWaves
         
 def main(): 
     #path = '/Volumes/common/scott/laminarPharm/mat/Lucky-DMS_ACSF_PFC-10162020-001.mat'
@@ -88,24 +88,15 @@ def main():
         else:
             f = os.path.join(directory, filename)
             paths.append(f)
-    area = 'dlPFC'
+    area = 'vlPFC'
     
-    allDF, meanAlignWaves, allAlignWaves = concat_sessions(paths, area)
-    save_df(allDF)
-    allAlignWavesDF = pd.DataFrame(allAlignWaves)
-    allAlignWavesDF.to_csv('/home/ehua/clustering/allAlignWaves_dlPFC.csv')
+    allDF, meanAlignWaves, allPEV, allAlignWaves = concat_sessions(paths, area)
     
-    # all_params = ['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV']
-   
-    # cluster_stats = allDF[all_params].to_numpy()
-    # scaler = StandardScaler() 
-    # cluster_stats_norm = scaler.fit_transform(cluster_stats)
+    df = pd.DataFrame(allDF)
+    df.to_csv('/home/ehua/clustering/vlPFC_df.csv')
     
-    # pairplot(allDF, cluster_stats_norm)
-    
-    # feat_reduction(allDF)
-    
-
+    waves_df = pd.DataFrame(allAlignWaves)
+    waves_df.to_csv('/home/ehua/clustering/allAlignWaves_vlPFC.csv')
 
 if __name__ == "__main__":
     main()

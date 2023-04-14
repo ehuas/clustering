@@ -9,6 +9,8 @@ from spynal import spikes, utils
 from spynal.matIO import loadmat
 import numpy as np
 import pandas as pd
+from utils import *
+import copy
 
 def trialSelection(trial_info, session_info):
     '''
@@ -23,10 +25,19 @@ def trialSelection(trial_info, session_info):
 
     '''
     drugStartTrial = session_info['drugStartTrial']
-    beforeDrugTrials = trial_info[:drugStartTrial-5]
+    beforeDrugTrials = trial_info.loc[trial_info['trial'] <= drugStartTrial-5]
+    trials_df = beforeDrugTrials.loc[beforeDrugTrials['correct']]
     trials_keep = np.where(beforeDrugTrials['correct'])[0]
+    sampInfo = copy.deepcopy(trials_df['sample'])
+    
+    block_trials = np.where(trials_df['blockType'] == 'block')[0]
+    trial_trials = np.where(trials_df['blockType'] == 'trial')[0]
 
-    return trials_keep
+    trials_df.loc[trials_df['blockType'] == 'block'] = 1
+    trials_df.loc[trials_df['blockType'] == 'trial'] = 0
+    predInfo = trials_df['blockType']  
+    
+    return trials_keep, predInfo, sampInfo, block_trials, trial_trials
 
 def trialsKeep(trials_keep, spike_times, spike_waves):
     times_trials = spike_times[trials_keep, :]
@@ -79,7 +90,7 @@ def neuronsKeep(neurons_keep, times_trials, waves_trials):
 def rateData(time_data):
     rates, timepts = spikes.rate(time_data, method='bin', lims = [-1, 2])
     meanRates = np.mean(np.mean(rates, axis = 2), axis = 0)
-    meanRates = np.expand_dims(meanRates, axis=0)
+    meanRates = anscombe(np.expand_dims(meanRates, axis=0))
     
     return meanRates, rates
 
@@ -165,18 +176,22 @@ def LV(ISIs):
     return allLV
     
 def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema):
-    trials_keep = trialSelection(trial_info, session_info)
+    trials_keep, predInfo, sampInfo, block_trials, trial_trials = trialSelection(trial_info, session_info)
     times_trials, waves_trials = trialsKeep(trials_keep, spike_times, spike_waves)
     
     neurons_keep = neuronSelection(times_trials)
     time_data, waves_data = neuronsKeep(neurons_keep, times_trials, waves_trials)
     
     meanRates, rates = rateData(time_data)
+    meanNeuronRate = np.mean(rates, axis=0)
+    blockRates = np.mean(rates[block_trials, :, :], axis = 0)
+    trialRates = np.mean(rates[trial_trials, :, :], axis = 0)
+    
     ISIs = isiData(time_data)
     
     meanAlignWaves, smpRate, alignWaves = waveAlign(waves_data, spike_waves_schema)
     
-    return trials_keep, neurons_keep, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves
+    return trials_keep, neurons_keep, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves, meanNeuronRate, blockRates, trialRates, predInfo, sampInfo
 
 def featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates):    
     '''

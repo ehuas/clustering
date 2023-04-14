@@ -12,75 +12,68 @@ from sklearn.mixture import GaussianMixture
 from statistics import mode
 from sklearn.preprocessing import StandardScaler
 from copy import deepcopy
-import seaborn as sns
 from sklearn.manifold import TSNE
-from matplotlib.ticker import NullFormatter
-from pylab import *
 import pandas as pd
-from spynal import spikes
-
+from plotting import *
+from analysis import *
 
 
 def GMM(features, num_reps):
+    '''
+    Performs GMM clustering on data. 
+        
+        Input: features (n_features, n_datapts): matrix of feature values for each datapoint
+               num_reps: number of times clustering is performed for a certain component value
+
+        Output: gmm_min: model fitted using the best number of components
+                min_labels: cluster assignments for each data point
+                average_min_comp = number of components used for clustering
+
+    '''
     components = np.arange(2, 10) # 2-9 clusters
     bics = np.zeros((num_reps, len(components)))
-    aics = np.zeros((num_reps, len(components)))
+    models = np.empty((0, len(components)))
+    labels = []
     min_comps = []
+    
     for rep in range(num_reps): # what is num_reps
         min_bic = np.inf 
-        min_aic = np.inf
+        rep_models = []
+        rep_labels = []
         for comp in components: # for each cluster #
-            gmm = GaussianMixture(comp)
+            gmm = GaussianMixture(n_components=comp, random_state=rep)
             gmm_copy = deepcopy(gmm)
             gmm_copy.fit(features)
+            label = gmm_copy.predict(features)
             
             bic = gmm_copy.bic(features)
-            aic = gmm_copy.aic(features)
             
             bics[rep, comp-2] = bic
-            aics[rep, comp-2] = aic
+            rep_models.append(gmm)
+            rep_labels.append(label)
             
             if bic < min_bic:
                 min_bic = bic
                 min_comp = comp
-            if aic < min_aic: 
-                min_aic = aic
         min_comps.append(min_comp)
+        models = np.append(models, np.array(rep_models).reshape((1, 8)), axis=0)
+        labels.append(rep_labels)
     
-    
-    #plt.figure(0)
-    bics_mean = np.mean(bics, axis=0)
-    bics_stds = np.std(bics, axis = 0)
-    #plt.plot(components, bics_mean, 'k', color='#CC4F1B')
-    #plt.fill_between(components, bics_mean-bics_stds, bics_mean+bics_stds,
+    # plt.figure(0)
+    # bics_mean = np.mean(bics, axis=0)
+    # bics_stds = np.std(bics, axis = 0)
+    # plt.plot(components, bics_mean, 'k', color='#CC4F1B')
+    # plt.fill_between(components, bics_mean-bics_stds, bics_mean+bics_stds,
     #                 alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848')
     
     average_min_comp = mode(min_comps)
     print(min_comps)
-    print(average_min_comp)
-    gmm_min = GaussianMixture(average_min_comp)
-    gmm_min.fit(features)
-    min_labels = gmm_min.predict(features)
+    min_model_idx = np.argmin(bics[:, average_min_comp-2])
+    min_model = models[min_model_idx, average_min_comp-2]
+    min_labels = labels[min_model_idx][average_min_comp-2]
     
-    return gmm_min, min_labels, average_min_comp
-    #plt.scatter(features[:, 0], features[:, 1], c=min_labels, s=40, cmap='viridis')
-    # bics_mean = np.mean(bics, axis=0) #average per cluster (over reps)
-    # aics_mean = np.mean(aics, axis=0)
-    # plt.figure(3)
-    # plt.plot(components, bics_mean)
-    # plt.title('bics_mean')
-    # plt.xlabel('cluster #')
-    # plt.figure(4)
-    # plt.plot(components, aics_mean)
-    # plt.title('aics_mean')
-    # plt.xlabel('cluster #')
-    
-    # average_min_comp = mode(min_comps)
-    # gmm_min = GaussianMixture(average_min_comp)
-    # gmm_min.fit(features)
-    # min_labels = gmm_min.predict(features)
-    # return min_labels, average_min_comp
-    
+    return min_model, min_labels, average_min_comp
+        
 def outlier_id(df, labels, comp_num, allAlignWaves):
     df['labels'] = labels
     rows, cols = df.shape
@@ -90,10 +83,6 @@ def outlier_id(df, labels, comp_num, allAlignWaves):
     for i in range(comp_num):
         cluster_units = df.loc[df['labels'] == i]
         cluster_idx = cluster_units.index
-        cluster_waves = allAlignWaves[:, cluster_idx]
-        mean_wave = np.mean(cluster_waves, axis=1)
-        #ttp_mean = spikes.waveform_stats(mean_wave, stat='width', smp_rate=299999.99999999994)
-        #rpt_mean = spikes.waveform_stats(mean_wave, stat='repolarization', smp_rate=299999.99999999994)
         
         troughToPeak = cluster_units['troughToPeak'].to_numpy()
         repolTime = cluster_units['repolTime'].to_numpy()
@@ -110,47 +99,20 @@ def outlier_id(df, labels, comp_num, allAlignWaves):
     
     df['outliers'] = outlier_col
     return df
-    
-def pairplot(labels_df, outliers_df, comp_num, area, outlier=False):
-    all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
-    if outlier:
-        for i in range(comp_num):
-            cluster_units = outliers_df.loc[outliers_df['labels'] == i]
-            g = sns.pairplot(cluster_units, hue = "outliers", kind='scatter', 
-                                    diag_kind='kde', palette = 'muted',  x_vars = all_params, y_vars = all_params)
-            g.fig.suptitle(area + " outlier pairplot for comp " + i, y = 1.03, fontsize = 20)
-    else:
-        g = sns.pairplot(labels_df, hue = "labels", kind='scatter', 
-                                diag_kind='kde', palette = 'muted',  x_vars = all_params, y_vars = all_params)
-        g.fig.suptitle(area + " cluster pairplot", y = 1.03, fontsize = 20)
         
-def hue_regplot(data, x, y, hue, palette=None, **kwargs):
-    from matplotlib.cm import get_cmap
-    
-    regplots = []
-    
-    levels = data[hue].unique()
-    
-    if palette is None:
-        default_colors = get_cmap('tab10')
-        palette = {k: default_colors(i) for i, k in enumerate(levels)}
-    
-    for key in levels:
-        regplots.append(
-            sns.regplot(
-                x=x,
-                y=y,
-                data=data[data[hue] == key],
-                color=palette[key],
-                **kwargs
-            )
-        )
-    
-    return regplots
 
 def feat_reduction(df, min_labels, area):
+    '''
+    Reduces N-d data to a 2-d feature space using TSNE method.
+        
+        Input: df (n_features, n_datapts): dataframe of features to be reduced
+               min_labels: cluster assignments for each datapoint
+               area: cortical area of data
+
+        Output: scatterplot of data in 2-d space.
+
+    '''
     num_pts, num_vars = df.shape
-    print(num_pts)
     perplexities = [10, 30, 40, 50, 60, 70, 80, 100]
     (fig, subplots) = plt.subplots(2, 4, figsize=(16, 8))
     axes = subplots.flatten()
@@ -169,47 +131,27 @@ def feat_reduction(df, min_labels, area):
         
         df_tsne = pd.DataFrame(df_embedded, columns=['comp1', 'comp2'])
         df_tsne["label"] = min_labels
-    
-        ax.set_title(area + " for Perp=%d" % perplexity)
-        sns.scatterplot(data=df_tsne, x='comp1', y='comp2', marker='o', hue=df_tsne.label.astype('category').cat.codes, ax = ax)
-        #hue_regplot(x='comp1', y='comp2', data=df_tsne, hue='label', ax=ax, fit_reg=False, marker='o')
-        ax.xaxis.set_major_formatter(NullFormatter())
-        ax.yaxis.set_major_formatter(NullFormatter())
-        ax.axis("tight")
         
-    # allDF_embedded = TSNE(n_components=2, learning_rate='auto',
-    #                   init='random', perplexity=50).fit_transform(allDF)
-    
-def plot_avg_wave(allAlignWaves, df, labels, comp_num, area):
-    f = plt.figure()
-    f.set_figheight(20)
-    colors = ['xkcd:azure', 'mediumseagreen', 'tab:olive', 'xkcd:lavender', 'b', 'g']
-    for i in range(comp_num):
-        cluster_units = df.loc[df['labels'] == i]
-        cluster_units_idx = cluster_units.index
-        outlier_idx = cluster_units.loc[cluster_units["outliers"] == 1].index
-        cluster_units_idx = list(set(cluster_units_idx) - set(outlier_idx))
-        cluster_waves = allAlignWaves[:, cluster_units_idx]
-        outlier_waves = allAlignWaves[:, outlier_idx]
-        
-        plt.subplot(comp_num, 1, i+1)
-        plt.plot(cluster_waves, color = colors[i], alpha = 0.2)
-        mean_wave = np.mean(cluster_waves, axis = 1)  
-        plt.plot(mean_wave, color = 'k')
-        if outlier_waves.size != 0:
-            plt.plot(outlier_waves, color="crimson", alpha = 0.5)
-    f.suptitle(area + " cluster waveforms", y = 1.03, fontsize = 20)
-    plt.show()
-    
+        tsne_plot(ax, perplexity, df_tsne, area)
 
 
 def main():    
     area = 'PFC'
+    label_type = 'samp'
     feat_df = pd.read_csv('/home/ehua/clustering/PFC_df.csv', index_col = 0)
-    allAlignWaves_df = pd.read_csv('/home/ehua/clustering/allAlignWaves_PFC.csv', index_col = 0)
-    allAlignWaves = allAlignWaves_df.to_numpy()
+    allAlignWavesDf = pd.read_csv('/home/ehua/clustering/allAlignWaves_PFC.csv', index_col = 0)
+    allAlignWaves = allAlignWavesDf.to_numpy()
     waves_ptp = allAlignWaves.ptp(axis = 0)
     allAlignWaves_norm = np.divide(allAlignWaves, waves_ptp)
+    
+    #allRatesDf = pd.read_csv('/home/ehua/clustering/allRates_V4.csv', index_col = 0)
+    #allRates = allRatesDf.to_numpy()
+    
+    #allBlockRatesDf = pd.read_csv('/home/ehua/clustering/allBlockRates_V4.csv', index_col = 0)
+    #allBlockRates = allBlockRatesDf.to_numpy()
+    
+    #allTrialRatesDf = pd.read_csv('/home/ehua/clustering/allTrialRates_V4.csv', index_col = 0)
+    #allTrialRates = allTrialRatesDf.to_numpy()
     
     all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
    
@@ -217,19 +159,28 @@ def main():
     scaler = StandardScaler() 
     cluster_stats_norm = scaler.fit_transform(cluster_stats)
     
-    gmm_min, min_labels, comp_num = GMM(cluster_stats_norm, 40)
+    gmm_min, min_labels, comp_num = GMM(cluster_stats_norm, 1000)
     
     cluster_stats_df = pd.DataFrame(cluster_stats_norm)
     cluster_stats_df['labels'] = min_labels
     labels_df = feat_df.copy(deep=True)
     labels_df['labels'] = min_labels
-    #plot_avg_wave(allAlignWaves_norm, cluster_stats_df, min_labels, comp_num)
     
-    #feat_reduction(feat_df, min_labels, area)
+    feat_reduction(feat_df, min_labels, area)
     
     outliers_df = outlier_id(feat_df, min_labels, comp_num, allAlignWaves_norm)
     plot_avg_wave(allAlignWaves_norm, outliers_df, min_labels, comp_num, area)
-    pairplot(labels_df, outliers_df, comp_num, area)
+    #pairplot(labels_df, outliers_df, comp_num, area)
+    
+    #area_dist(labels_df, comp_num, area)
+    var_values(labels_df, all_params, comp_num, area)
+    
+    #psth(labels_df, comp_num, allBlockRates, allTrialRates)
+    
+    allPEVDf = pd.read_csv('/home/ehua/clustering/allPEV_samp_PFC.csv', index_col = 0)
+    allPEV = allPEVDf.to_numpy()
+    
+    pev = pev_plot(allPEV, min_labels, comp_num, area, label_type)
 
 if __name__ == "__main__":
     main()
