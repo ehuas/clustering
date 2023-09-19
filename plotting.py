@@ -10,8 +10,33 @@ import seaborn as sns
 import numpy as np
 from matplotlib.ticker import NullFormatter
 from scipy import stats
-from spynal import info, plots
+import pandas as pd
+from sklearn.manifold import TSNE
 
+def outlier_id(labels_df, comp_num):
+    rows, _ = labels_df.shape
+    max_std = 2.5
+    
+    outlier_col = np.empty((rows, ))
+    for i in range(comp_num):
+        cluster_units = labels_df.loc[labels_df['labels'] == i]
+        cluster_idx = cluster_units.index
+        
+        troughToPeak = cluster_units['troughToPeak'].to_numpy()
+        repolTime = cluster_units['repolTime'].to_numpy()
+        ttp_std = np.std(troughToPeak)
+        ttp_mean = np.mean(troughToPeak)
+        ttp_std_filter = np.where(np.logical_or(troughToPeak < ttp_mean - (max_std*ttp_std), troughToPeak > ttp_mean + (max_std*ttp_std)), 1, 0)
+        rpt_std = np.std(repolTime)
+        rpt_mean = np.mean(repolTime)
+        rpt_std_filter = np.where(np.logical_or(repolTime < rpt_mean - (max_std*rpt_std), repolTime > rpt_mean + (max_std*rpt_std)), 1, 0)
+
+        outlier_all = np.logical_or(ttp_std_filter, rpt_std_filter)    
+        
+        outlier_col[cluster_idx] = outlier_all
+    
+    labels_df['outliers'] = outlier_col
+    return labels_df
 
 def pairplot(labels_df, outliers_df, comp_num, area, outlier=False):
     all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
@@ -25,8 +50,10 @@ def pairplot(labels_df, outliers_df, comp_num, area, outlier=False):
         g = sns.pairplot(labels_df, hue = "labels", kind='scatter', 
                                 diag_kind='kde', palette = 'muted',  x_vars = all_params, y_vars = all_params)
         g.fig.suptitle(area + " cluster pairplot", y = 1.03, fontsize = 20)
+        plt.savefig('/home/ehua/clustering/090623_data/figures/{}_pairplot.png'.format(area))
+
         
-def plot_avg_wave(allAlignWaves, df, labels, comp_num, area):
+def plot_avg_wave(allAlignWaves, df, comp_num, area):
     fig, axs = plt.subplots(comp_num, 1)
     fig.tight_layout()
     fig.set_figheight(15)
@@ -34,7 +61,7 @@ def plot_avg_wave(allAlignWaves, df, labels, comp_num, area):
     
     clusters =[]
     
-    colors = ['xkcd:azure', 'mediumseagreen', 'tab:olive', 'xkcd:lavender', 'b', 'g']
+    colors = sns.color_palette("muted")
     for i in range(comp_num):
         ax = axs[i]
         clusters.append(i)
@@ -52,6 +79,9 @@ def plot_avg_wave(allAlignWaves, df, labels, comp_num, area):
             ax.plot(outlier_waves, color="crimson", alpha = 0.5)
     fig.suptitle(area + " cluster waveforms", y = 1.03, fontsize = 20)
     fig.legend(clusters)
+
+    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_avg_waves.png'.format(area))
+
     
 def elbow_plot(components, data_mean, data_std):
     plt.figure(0)
@@ -67,28 +97,30 @@ def tsne_plot(ax, perplexity, df_tsne, area):
     ax.axis("tight")
     
 def area_dist(df, comp_num, area):
+    colors = sns.color_palette("muted")
     plt.figure(figsize = (10, 10))
-    datapts, features = df.shape
+    datapts, _ = df.shape
     labels = []
     percs = []
     for i in range(comp_num):
-        cluster_pts = df.loc[df['labels'] == i].shape[0]
+        cluster_pts = df.loc[df['0'] == i].shape[0]
         perc = cluster_pts/datapts
         percs.append(perc)
         labels.append(str(i))
     
     plt.pie(percs, labels=labels, autopct='%1.1f%%',
-            shadow=True, startangle=90)
+            shadow=True, startangle=90, colors=colors)
     plt.title(area + " datapoints per cluster")
     plt.show()
+    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_dist.png'.format(area))
     
-def var_values(df, all_params, comp_num, area):
+def param_values(df, all_params, comp_num, area):
     fig, axs = plt.subplots(1, len(all_params))
     fig.tight_layout()
     fig.set_figheight(10)
     fig.set_figwidth(15)
     
-    colors = ['xkcd:azure', 'mediumseagreen', 'tab:olive', 'xkcd:lavender', 'b', 'g']
+    colors = sns.color_palette("muted")
     clusters = []
    
     for i in range(len(all_params)):
@@ -104,8 +136,9 @@ def var_values(df, all_params, comp_num, area):
             ax.set_title(param)
    
     plt.legend(clusters)
-        
+    plt.title(area + " parameter values")
     plt.show()
+    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_param_values.png'.format(area))
     
 def psth(df, comp_num, blockRates, trialRates):
     time_vec = np.linspace(-1, 1.95, 60)
@@ -124,14 +157,13 @@ def psth(df, comp_num, blockRates, trialRates):
     
     fig.legend(["block", "trial"])
     
-def pev_plot(data, labels, p, area, label_type):
+def pev_plot(data, labels, comp_num, area, label_type):
     plt.figure()
-    comp_num = max(labels)
     #fig, axs = plt.subplots(comp_num, 1)
     #fig.tight_layout()
-    colors = ['xkcd:azure', 'mediumseagreen', 'tab:olive', 'xkcd:lavender']
+    colors = sns.color_palette("muted")
     clusters = []
-    time_vec = np.linspace(-1, 1.95, 60)
+    time_vec = np.linspace(-1, 0.5, 30)
     
     for i in range(comp_num):
         #ax = axs[i]
@@ -145,17 +177,80 @@ def pev_plot(data, labels, p, area, label_type):
         plt.fill_between(time_vec, data_mean-sems, data_mean+sems,
                      alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848')
     
-    for i in range(len(p)):
-        if p[i] <= 0.05:
-            plt.plot(time_vec[i], p[i], marker='o', markersize=10, markerfacecolor='red')
-    plt.title(area + " pev plot for " + label_type, y = 1.03, fontsize = 20)
+    # for i in range(p):
+    #     if p[i] <= 0.05:
+    #         plt.plot(time_vec[i], p[i], marker='o', markersize=10, markerfacecolor='red')
+    # plt.title(area + " pev plot for " + label_type, y = 1.03, fontsize = 20)
     #fig.legend(clusters)
+
+def feat_reduction(df, min_labels, area):
+    '''
+    Reduces N-d data to a 2-d feature space using TSNE method.
+        
+        Input: df (n_features, n_datapts): dataframe of features to be reduced
+               min_labels: cluster assignments for each datapoint
+               area: cortical area of data
+
+        Output: scatterplot of data in 2-d space.
+
+    '''
+    num_pts, num_vars = df.shape
+    perplexities = [10, 30, 40, 50, 60, 70, 80, 100]
+    (fig, subplots) = plt.subplots(2, 4, figsize=(16, 8))
+    axes = subplots.flatten()
+
+    for i, perplexity in enumerate(perplexities):
+        ax = axes[i]
+    
+        tsne = TSNE(
+            n_components=2,
+            init="random",
+            perplexity=perplexity,
+            learning_rate="auto",
+            n_iter = 5000
+        )
+        df_embedded = tsne.fit_transform(df)
+        
+        df_tsne = pd.DataFrame(df_embedded, columns=['comp1', 'comp2'])
+        df_tsne["label"] = min_labels
+        
+        tsne_plot(ax, perplexity, df_tsne, area)
+
 
 def raster():
     pass
 
 def main():
-    pass
+    area = 'LIP'
+    pev_type = 'pred'
+    feat_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area), index_col = 0)
+    waves_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_waves.csv'.format(area), index_col = 0)
+    waves = waves_df.to_numpy()
+    waves_ptp = waves.ptp(axis = 0)
+    waves_norm = np.divide(waves, waves_ptp)
+    
+    all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
+    labels_df = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels_df.csv'.format(area), index_col = 0)
+    labels = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels.csv'.format(area), index_col = 0)
+
+    print(len(labels))
+    comp_num = max(labels['0']+1)
+    
+    #feat_reduction(feat_df, min_labels, area)
+    
+    #outliers_df = outlier_id(labels_df, comp_num)
+    #plot_avg_wave(waves_norm, outliers_df, comp_num, area)
+    #pairplot(labels_df, outliers_df, comp_num, area)
+    
+    #area_dist(labels, comp_num, area)
+    #param_values(labels_df, all_params, comp_num, area)
+
+    #psth(labels_df, comp_num, allBlockRates, allTrialRates)
+    
+    pev_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_PEV_{}.csv'.format(area, pev_type), index_col = 0)
+    pev_data = pev_df.to_numpy()
+    
+    pev = pev_plot(pev_data, labels, comp_num, area, pev_type)
 
 if __name__ == "__main__":
     main()

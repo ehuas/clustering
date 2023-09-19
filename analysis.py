@@ -43,7 +43,7 @@ def ttest(data, labels):
     fig, axs = plt.subplots(comp_num, 1)
     fig.tight_layout()
     colors = ['xkcd:azure', 'mediumseagreen', 'tab:olive', 'xkcd:lavender']
-    time_vec = np.linspace(-1, 1.95, 60)
+    time_vec = np.linspace(-1, 0.5, 30)
     
     for i in range(comp_num):
         ax = axs[i]
@@ -53,10 +53,10 @@ def ttest(data, labels):
 
     
 def main():
-    allPEVDf = pd.read_csv('/home/ehua/clustering/allPEV_samp_PFC.csv', index_col = 0)
+    allPEVDf = pd.read_csv('/home/ehua/clustering/allPEV_samp_V4.csv', index_col = 0)
     allPEV = allPEVDf.to_numpy()
     
-    labels_df = pd.read_csv('/home/ehua/clustering/PFC_labels.csv', index_col = 0)
+    labels_df = pd.read_csv('/home/ehua/clustering/V4_labels.csv', index_col = 0)
     labels = labels_df['labels']
     
     p = anova(allPEV, labels)
