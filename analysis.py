@@ -12,19 +12,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from plotting import *
 
-def spike_analysis(spike_data, cluster_df, comp_num):
-    for i in range(comp_num):
-        cluster_units = cluster_df.loc[cluster_df['labels'] == i]
-        cluster_idx = cluster_units.index
-        
-        spike_units = spike_data[cluster_idx, :]
-        
-        # identify points of interest in time
-        # isolate those ranges
-        # index into spike data with range & neurons in cluster
-        # raster plot that data
-        
 
+        
 
 def pev_func(data, labels):
     pev = info.neural_info(data, labels)

@@ -86,9 +86,10 @@ def GMM(features, num_reps, area):
     return min_model, min_labels, average_min_comp\
 
 def main():    
-    area = 'LIP'
+    area = 'dlPFC'
     feat_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area), index_col = 0)
     waves_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_waves.csv'.format(area), index_col = 0)
+    depths = pd.read_csv('/home/ehua/clustering/090623_data/{}_depths.csv'.format(area), index_col = 0)
     waves = waves_df.to_numpy()
     waves_ptp = waves.ptp(axis = 0)
     waves_norm = np.divide(waves, waves_ptp)
@@ -105,6 +106,7 @@ def main():
     cluster_stats_df['labels'] = min_labels
     labels_df = feat_df.copy(deep=True)
     labels_df['labels'] = min_labels
+    labels_df['depths'] = depths
     
     labels_df.to_csv('/home/ehua/clustering/090623_data/clusters/{}_labels_df.csv'.format(area))
     min_labels_df = pd.DataFrame(min_labels)

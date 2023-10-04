@@ -12,6 +12,8 @@ from matplotlib.ticker import NullFormatter
 from scipy import stats
 import pandas as pd
 from sklearn.manifold import TSNE
+from spynal import spikes
+import math
 
 def outlier_id(labels_df, comp_num):
     rows, _ = labels_df.shape
@@ -111,7 +113,6 @@ def area_dist(df, comp_num, area):
     plt.pie(percs, labels=labels, autopct='%1.1f%%',
             shadow=True, startangle=90, colors=colors)
     plt.title(area + " datapoints per cluster")
-    plt.show()
     plt.savefig('/home/ehua/clustering/090623_data/figures/{}_dist.png'.format(area))
     
 def param_values(df, all_params, comp_num, area):
@@ -137,7 +138,6 @@ def param_values(df, all_params, comp_num, area):
    
     plt.legend(clusters)
     plt.title(area + " parameter values")
-    plt.show()
     plt.savefig('/home/ehua/clustering/090623_data/figures/{}_param_values.png'.format(area))
     
 def psth(df, comp_num, blockRates, trialRates):
@@ -170,18 +170,15 @@ def pev_plot(data, labels, comp_num, area, label_type):
         clusters.append(i)
         cluster_units = labels == i
         
-        data_mean = np.mean(data[cluster_units, :], axis = 0)
+        data_mean = np.mean(data[cluster_units.to_numpy().flatten(), :], axis = 0)
         plt.plot(time_vec, data_mean, color=colors[i])
         
         sems = stats.sem(data)
         plt.fill_between(time_vec, data_mean-sems, data_mean+sems,
                      alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848')
     
-    # for i in range(p):
-    #     if p[i] <= 0.05:
-    #         plt.plot(time_vec[i], p[i], marker='o', markersize=10, markerfacecolor='red')
-    # plt.title(area + " pev plot for " + label_type, y = 1.03, fontsize = 20)
-    #fig.legend(clusters)
+    plt.title(area + ' PEV plot for ' + label_type)
+    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_PEV_{}.png'.format(area, label_type))
 
 def feat_reduction(df, min_labels, area):
     '''
@@ -217,40 +214,91 @@ def feat_reduction(df, min_labels, area):
         tsne_plot(ax, perplexity, df_tsne, area)
 
 
-def raster():
+def raster(spike_data, labels, comp_num, cond_data, cond_type):
+    '''
+    Generates raster plots of spike data per cluster for different PEV labels.
+        
+        Input: spike_data (n_units, n_timepts): ndarray of spike timestamps
+               labels (n_units, ): column of cluster labels
+               comp_num: number of clusters
+               cond_data (n_units, ): labels of conditions
+               cond_type: condition type (samp or pred)
+
+        Output: scatterplot of data in 2-d space.
+
+    '''
+    fig = plt.figure(constrained_layout=True,figsize=(10,10))
+    subfigs = fig.subfigures(math.ceil(comp_num/2),2)
+
+    if cond_type == 'samp': # 3 samp types vs 2 pred types (block vs. trial)
+        num_cond = 3
+    else:
+        num_cond = 2
+
+
+    for i in range(comp_num):
+        axs_i = subfigs[i].subplots(num_cond, 1, sharex=True)
+
+        cluster_units = labels == i
+        cluster_units_idx = cluster_units.index
+
+        spike_units = spike_data[cluster_units_idx, :]
+
+        for ax in axs_i:   
+            cond_i = cond_data.loc[cond_data['0'] == i]
+            cond_i_idx = cond_i.index
+            cond_spikes = spike_units[cond_i_idx, :]                         
+            
+            spikes.plot_raster(cond_spikes, ax)
+        
+        ax.title('cluster ' + comp_num + ' raster for ' + cond_type)
+    
+
+def depth_analysis(depths, labels):
+    # generate some vector of distinct depths
+    # plot # of cluster of that depth in stacked bars..?
     pass
 
+
 def main():
-    area = 'LIP'
-    pev_type = 'pred'
-    feat_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area), index_col = 0)
-    waves_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_waves.csv'.format(area), index_col = 0)
-    waves = waves_df.to_numpy()
-    waves_ptp = waves.ptp(axis = 0)
-    waves_norm = np.divide(waves, waves_ptp)
-    
-    all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
-    labels_df = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels_df.csv'.format(area), index_col = 0)
-    labels = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels.csv'.format(area), index_col = 0)
+    areas = ['LIP']
+    pev_types = ['samp', 'pred']
 
-    print(len(labels))
-    comp_num = max(labels['0']+1)
-    
-    #feat_reduction(feat_df, min_labels, area)
-    
-    #outliers_df = outlier_id(labels_df, comp_num)
-    #plot_avg_wave(waves_norm, outliers_df, comp_num, area)
-    #pairplot(labels_df, outliers_df, comp_num, area)
-    
-    #area_dist(labels, comp_num, area)
-    #param_values(labels_df, all_params, comp_num, area)
+    for area in areas:
+        #feat_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area), index_col = 0)
+        waves_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_waves.csv'.format(area), index_col = 0)
+        spikes_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_spikes.csv'.format(area), index_col = 0)
+        spikes = spikes_df.to_numpy()
+        waves = waves_df.to_numpy()
+        waves_ptp = waves.ptp(axis = 0)
+        waves_norm = np.divide(waves, waves_ptp)
+        
+        all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
+        labels_df = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels_df.csv'.format(area), index_col = 0)
+        labels = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels.csv'.format(area), index_col = 0)
+        comp_num = max(labels['0']+1)
 
-    #psth(labels_df, comp_num, allBlockRates, allTrialRates)
-    
-    pev_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_PEV_{}.csv'.format(area, pev_type), index_col = 0)
-    pev_data = pev_df.to_numpy()
-    
-    pev = pev_plot(pev_data, labels, comp_num, area, pev_type)
+        cond_data = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_{}.csv'.format(area, cond_type), index_col = 0)
+        
+        #feat_reduction(feat_df, labels, area)
+        
+        # outliers_df = outlier_id(labels_df, comp_num)
+        # plot_avg_wave(waves_norm, outliers_df, comp_num, area)
+        # pairplot(labels_df, outliers_df, comp_num, area)
+        
+        # area_dist(labels, comp_num, area)
+        # param_values(labels_df, all_params, comp_num, area)
+
+        #psth(labels_df, comp_num, allBlockRates, allTrialRates)
+        
+        # for pev_type in pev_types:
+        #     pev_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_PEV_{}.csv'.format(area, pev_type), index_col = 0)
+        #     pev_data = pev_df.to_numpy()
+            
+        #     pev_plot(pev_data, labels, comp_num, area, pev_type)
+
+        for cond_type in pev_types:
+            raster(spikes, labels, comp_num, cond_data, cond_type)
 
 if __name__ == "__main__":
     main()
