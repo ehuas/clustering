@@ -14,6 +14,7 @@ import pandas as pd
 from sklearn.manifold import TSNE
 from spynal import spikes
 import math
+from copy import deepcopy
 
 def outlier_id(labels_df, comp_num):
     rows, _ = labels_df.shape
@@ -214,7 +215,7 @@ def feat_reduction(df, min_labels, area):
         tsne_plot(ax, perplexity, df_tsne, area)
 
 
-def raster(spike_data, labels, comp_num, cond_data, cond_type):
+def raster(area, labels, cluster, cond_data, cond_type, unit_num):
     '''
     Generates raster plots of spike data per cluster for different PEV labels.
         
@@ -227,58 +228,72 @@ def raster(spike_data, labels, comp_num, cond_data, cond_type):
         Output: scatterplot of data in 2-d space.
 
     '''
-    fig = plt.figure(constrained_layout=True,figsize=(10,10))
-    subfigs = fig.subfigures(math.ceil(comp_num/2),2)
+    fig, axs = plt.subplots(math.ceil(unit_num/5), 5)
 
-    if cond_type == 'samp': # 3 samp types vs 2 pred types (block vs. trial)
-        num_cond = 3
-    else:
-        num_cond = 2
+    for i in range(unit_num):
+        spikes = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_{}_{}.csv'.format(area, cond_type, i), index_col = 0)
+        labels = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_{}.csv'.format(area, cond_type, i), index_col = 0)
+        ax = axs[i]
 
-
-    for i in range(comp_num):
-        axs_i = subfigs[i].subplots(num_cond, 1, sharex=True)
-
-        cluster_units = labels == i
-        cluster_units_idx = cluster_units.index
-
-        spike_units = spike_data[cluster_units_idx, :]
-
-        for ax in axs_i:   
-            cond_i = cond_data.loc[cond_data['0'] == i]
-            cond_i_idx = cond_i.index
-            cond_spikes = spike_units[cond_i_idx, :]                         
-            
-            spikes.plot_raster(cond_spikes, ax)
+        spikes.plot_raster(spikes, ax)
         
-        ax.title('cluster ' + comp_num + ' raster for ' + cond_type)
-    
 
-def depth_analysis(depths, labels):
-    # generate some vector of distinct depths
-    # plot # of cluster of that depth in stacked bars..?
-    pass
+def depth_analysis(depths, labels, comp_num):
+    comps = [str(i) for i in range(comp_num)]
+    depth_vals = np.unique(depths)
+    depths_counts = {i: [] for i in range(len(depth_vals))}
+    for i in range(comp_num):
+        cluster_units = labels == i
+        unit_depths = depths[cluster_units]
+        _, counts = np.unique(unit_depths,return_counts = True)
+        for i in range(len(depth_vals)):
+            val = depth_vals[i]
+            depths_counts[val].append(counts[i])
 
+    width = 0.5
+
+    fig, ax = plt.subplots()
+    bottom = np.zeros(comp_num)
+
+    for boolean, depth_count in depths_counts.items():
+        p = ax.bar(comps, depth_count, width, label=boolean, bottom=bottom)
+        bottom += depth_count
+
+    mylabels = depth_vals.deepcopy()
+    mylabels[mylabels == -6] = "missing"
+
+    ax.set_title("Depth bar plot")
+    ax.legend(labels=mylabels)
+
+    plt.show()
 
 def main():
-    areas = ['LIP']
+    areas = ['V4']
     pev_types = ['samp', 'pred']
+    cluster = 0
 
     for area in areas:
         #feat_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area), index_col = 0)
         waves_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_waves.csv'.format(area), index_col = 0)
-        spikes_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_spikes.csv'.format(area), index_col = 0)
-        spikes = spikes_df.to_numpy()
         waves = waves_df.to_numpy()
         waves_ptp = waves.ptp(axis = 0)
         waves_norm = np.divide(waves, waves_ptp)
+
+        #spikes_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_spikes.csv'.format(area), index_col = 0)
+        #spikes = spikes_df.to_numpy()
+
+        depths_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_depths.csv'.format(area), index_col = 0)
+        depths = depths_df.to_numpy()
+
         
         all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
         labels_df = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels_df.csv'.format(area), index_col = 0)
         labels = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_labels.csv'.format(area), index_col = 0)
         comp_num = max(labels['0']+1)
 
-        cond_data = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_{}.csv'.format(area, cond_type), index_col = 0)
+        #cond_data = pd.read_csv('/home/ehua/clustering/090623_data/clusters/{}_{}.csv'.format(area, cond_type), index_col = 0)
+
+        depth_analysis(depths, labels, comp_num)
         
         #feat_reduction(feat_df, labels, area)
         
@@ -297,8 +312,10 @@ def main():
             
         #     pev_plot(pev_data, labels, comp_num, area, pev_type)
 
-        for cond_type in pev_types:
-            raster(spikes, labels, comp_num, cond_data, cond_type)
+        # for cond_type in pev_types:
+        #     cluster_units = labels == cluster
+        #     unit_num = cluster_units.size
+        #     raster(area, labels, cluster, cond_data, cond_type, unit_num)
 
 if __name__ == "__main__":
     main()
