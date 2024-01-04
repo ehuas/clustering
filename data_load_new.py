@@ -82,18 +82,18 @@ def concat_sessions(paths, area):
     depths_concat = np.empty((0, ))
     pred_concat = np.empty((0, ))
     samp_concat = np.empty((0, ))
-    spikes_concat = np.empty((0, 30))
+    unit_count = 0
     
     for path in paths:
-        
         spike_times, _, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
         area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
         
-        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, _, _, _, predInfo, sampInfo, depths, spikes = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema, unit_info)
+        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, _, _, _, predInfo, sampInfo, depths = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema, unit_info, area, unit_count)
         #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
-        if validTrials.size < 2 or validNeurons.size < 2:
+        if validTrials.size < 2 or len(validNeurons) < 2:
             pass
         else:
+            unit_count += len(validNeurons)
             features = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
             comb = pd.concat([comb, features], ignore_index=True)
             pev_samp = pev_func(rates, sampInfo)
@@ -108,11 +108,41 @@ def concat_sessions(paths, area):
             pred_concat = np.concatenate((pred_concat, predInfo.to_numpy()), axis = 0)
             samp_concat = np.concatenate((samp_concat, sampInfo.to_numpy()), axis = 0)
 
-            # spikes_concat = np.concatenate((spikes_concat, spikes), axis = 0)
+    print(unit_count)
+    return comb, meanAlignWaves, PEV_samp_concat, PEV_pred_concat, align_waves_concat, depths_concat, pred_concat, samp_concat
 
 
+# def concat_sessions(paths, area):
+#     comb = pd.DataFrame(columns=['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV'])
+#     lfp_sup_concat = np.empty((0, ))
+#     lfp_deep_concat = np.empty((0, ))
     
-    return comb, meanAlignWaves, PEV_samp_concat, PEV_pred_concat, align_waves_concat, depths_concat, pred_concat, samp_concat, spikes
+#     for path in paths:
+        
+#         spike_times, _, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
+#         area_spike_times, area_spike_waves = select_area(unit_info, spike_times, spike_waves, area)
+        
+#         validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, _, _, _, predInfo, sampInfo, depths = preProcessing(area_spike_times, trial_info, session_info, area_spike_waves, spike_waves_schema, unit_info, area, unit_count)
+#         #validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, alignWaves = preProcessing(spike_times, trial_info, session_info, spike_waves, spike_waves_schema)
+#         if validTrials.size < 2 or len(validNeurons) < 2:
+#             pass
+#         else:
+#             unit_count += len(validNeurons)-1
+#             features = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
+#             comb = pd.concat([comb, features], ignore_index=True)
+#             pev_samp = pev_func(rates, sampInfo)
+#             pev_pred = pev_func(rates, predInfo)
+           
+#             PEV_samp_concat = np.concatenate((PEV_samp_concat, np.squeeze(pev_samp, axis=0)), axis = 0)
+#             PEV_pred_concat = np.concatenate((PEV_pred_concat, np.squeeze(pev_pred, axis=0)), axis = 0)
+#             align_waves_concat = np.concatenate((align_waves_concat, meanAlignWaves), axis = 1)
+
+#             depths_concat = np.concatenate((depths_concat, depths), axis = 0)
+
+#             pred_concat = np.concatenate((pred_concat, predInfo.to_numpy()), axis = 0)
+#             samp_concat = np.concatenate((samp_concat, sampInfo.to_numpy()), axis = 0)
+
+#     return comb, meanAlignWaves, PEV_samp_concat, PEV_pred_concat, align_waves_concat, depths_concat, pred_concat, samp_concat
         
 def main(): 
     directories = ['/mnt/common/datasets/wmPredict/mat/mainTask', '/mnt/common/scott/laminarPharm/mat']
@@ -125,10 +155,10 @@ def main():
                 f = os.path.join(directory, filename)
                 paths.append(f)
     
-    areas = ['7A', 'V4', 'LIP', 'dlPFC', 'vlPFC']
+    areas = ['vlPFC', '7A', 'V4', 'LIP']
         
-    for area in areas:
-        comb, _, PEV_samp, PEV_pred, waves, depths, pred, samp, spikes = concat_sessions(paths, area)
+    for area in ['LIP']:
+        comb, _, PEV_samp, PEV_pred, waves, depths, pred, samp = concat_sessions(paths, area)
         
         # df = pd.DataFrame(comb)
         # df.to_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area))
@@ -142,12 +172,8 @@ def main():
         # pred_df = pd.DataFrame(PEV_pred)
         # pred_df.to_csv('/home/ehua/clustering/090623_data/{}_PEV_pred.csv'.format(area))
 
-        depths_df = pd.DataFrame(depths)
-        depths_df.to_csv('/home/ehua/clustering/090623_data/{}_depths.csv'.format(area))
-
-        # spikes_df = pd.DataFrame(spikes)
-        # spikes_df.to_csv('/home/ehua/clustering/090623_data/{}_spikes.csv'.format(area))
-
+        # depths_df = pd.DataFrame(depths)
+        # depths_df.to_csv('/home/ehua/clustering/090623_data/{}_depths_jitter.csv'.format(area))
 
         # pred_df = pd.DataFrame(pred)
         # pred_df.to_csv('/home/ehua/clustering/090623_data/{}_pred.csv'.format(area))

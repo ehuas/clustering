@@ -10,10 +10,12 @@ from spynal import spikes, info, randstats
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from plotting import *
 
-
-        
+def cluster_count(labels, comp_num):
+    counts = np.zeros(comp_num)
+    for label in labels['0']:
+        counts[label] += 1
+    return counts
 
 def pev_func(data, labels):
     pev = info.neural_info(data, labels)
@@ -49,10 +51,7 @@ def main():
     labels = labels_df['labels']
     
     p = anova(allPEV, labels)
-    print(p)
-    
-    pev_plot(allPEV, labels, p, 'PFC', 'samp')
-    
+    print(p)    
     
     ttest(allPEV, labels)
     
