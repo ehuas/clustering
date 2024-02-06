@@ -6,6 +6,7 @@ Created on Thu Feb  9 15:47:31 2023
 @author: ehua
 """
 import matplotlib.pyplot as plt
+from matplotlib import lines
 import seaborn as sns
 import numpy as np
 from matplotlib.ticker import NullFormatter
@@ -42,33 +43,35 @@ def outlier_id(labels_df, comp_num):
     labels_df['outliers'] = outlier_col
     return labels_df
 
-def pairplot(labels_df, outliers_df, comp_num, area, outlier=False):
+def pairplot(labels_df, outliers_df, comp_num, area, c_palette, outlier=False):
     all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
     if outlier:
         for i in range(comp_num):
             cluster_units = outliers_df.loc[outliers_df['labels'] == i]
             g = sns.pairplot(cluster_units, hue = "outliers", kind='scatter', 
-                                    diag_kind='kde', palette = 'muted',  x_vars = all_params, y_vars = all_params)
+                                    diag_kind='kde', palette = c_palette,  x_vars = all_params, y_vars = all_params)
             g.fig.suptitle(area + " outlier pairplot for comp " + i, y = 1.03, fontsize = 20)
     else:
         g = sns.pairplot(labels_df, hue = "labels", kind='scatter', 
-                                diag_kind='kde', palette = 'muted',  x_vars = all_params, y_vars = all_params)
+                                diag_kind='kde', palette = c_palette,  x_vars = all_params, y_vars = all_params)
         g.fig.suptitle(area + " cluster pairplot", y = 1.03, fontsize = 20)
         plt.savefig('/home/ehua/clustering/090623_data/figures/{}_pairplot.png'.format(area))
 
+    plt.close()
+
         
-def plot_avg_wave(allAlignWaves, df, comp_num, area):
-    fig, axs = plt.subplots(comp_num, 1)
-    fig.tight_layout()
+def plot_avg_wave(allAlignWaves, df, comp_num, area, c_palette):
+    fig, axs = plt.subplots(math.ceil(comp_num/2), 2)
     fig.set_figheight(15)
     fig.set_figwidth(10)
+    ax_count = 0
     
-    clusters =[]
-    
-    colors = sns.color_palette("muted")
+    handles = []
+    labels = []
+
     for i in range(comp_num):
-        ax = axs[i]
-        clusters.append(i)
+        r, c = divmod(ax_count, 2)
+        ax = axs[r, c]
         cluster_units = df.loc[df['labels'] == i]
         cluster_units_idx = cluster_units.index
         outlier_idx = cluster_units.loc[cluster_units["outliers"] == 1].index
@@ -76,16 +79,31 @@ def plot_avg_wave(allAlignWaves, df, comp_num, area):
         cluster_waves = allAlignWaves[:, cluster_units_idx]
         outlier_waves = allAlignWaves[:, outlier_idx]
         
-        ax.plot(cluster_waves, color = colors[i], alpha = 0.2)
+        ax.plot(cluster_waves, color = c_palette[i], alpha = 0.2)
         mean_wave = np.mean(cluster_waves, axis = 1)  
         ax.plot(mean_wave, color = 'k')
         if outlier_waves.size != 0:
-            ax.plot(outlier_waves, color="crimson", alpha = 0.5)
+            ax.plot(outlier_waves, color="darkgrey", alpha = 0.5)
+        ax.set_xlabel('Timepoint (10x Interpolated)')
+        ax.set_ylabel('Amplitude (mV)')
+
+        handles.append(lines.Line2D([0], [0], ls = '-', c=c_palette[i]))
+        labels.append('Cluster ' + str(i))
+
+        ax_count += 1
+    
+    handles.append(lines.Line2D([0], [0], ls = '-', c='k'))
+    handles.append(lines.Line2D([0], [0], ls = '-', c='darkgrey'))
+
+    labels.append('Average Waveform')
+    labels.append('Outlier Wave')
+
+    fig.legend(handles, labels)
     fig.suptitle(area + " cluster waveforms", y = 1.03, fontsize = 20)
-    fig.legend(clusters)
+    fig.tight_layout()
 
     plt.savefig('/home/ehua/clustering/090623_data/figures/{}_avg_waves.png'.format(area))
-
+    plt.close()
     
 def elbow_plot(components, data_mean, data_std):
     plt.figure(0)
@@ -93,15 +111,14 @@ def elbow_plot(components, data_mean, data_std):
     plt.fill_between(components, data_mean-data_std, data_mean+data_std,
                      alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848')
     
-def tsne_plot(ax, perplexity, df_tsne, area):
+def tsne_plot(ax, perplexity, df_tsne, area, palette):
     ax.set_title(area + " for Perp=%d" % perplexity)
-    sns.scatterplot(data=df_tsne, x='comp1', y='comp2', marker='o', hue=df_tsne.label.astype('category').cat.codes, ax = ax)
+    sns.scatterplot(data=df_tsne, x='comp1', y='comp2', marker='o', hue=df_tsne.label.astype('category').cat.codes, palette = palette, ax = ax)
     ax.xaxis.set_major_formatter(NullFormatter())
     ax.yaxis.set_major_formatter(NullFormatter())
     ax.axis("tight")
     
-def area_dist(df, comp_num, area):
-    colors = sns.color_palette("muted")
+def area_dist(df, comp_num, area, c_palette):
     plt.figure(figsize = (10, 10))
     datapts, _ = df.shape
     labels = []
@@ -110,20 +127,21 @@ def area_dist(df, comp_num, area):
         cluster_pts = df.loc[df['0'] == i].shape[0]
         perc = cluster_pts/datapts
         percs.append(perc)
-        labels.append(str(i))
+        labels.append('Cluster ' + str(i))
     
     plt.pie(percs, labels=labels, autopct='%1.1f%%',
-            shadow=True, startangle=90, colors=colors)
-    plt.title(area + " datapoints per cluster")
+            shadow=True, startangle=90, colors=c_palette)
+    plt.title(area + " Clusteral Distribution of Datapoints")
     plt.savefig('/home/ehua/clustering/090623_data/figures/{}_dist.png'.format(area))
+
+    plt.close()
     
-def param_values(df, all_params, comp_num, area):
+def param_values(df, all_params, comp_num, area, c_palette):
     fig, axs = plt.subplots(1, len(all_params))
-    fig.tight_layout()
     fig.set_figheight(10)
     fig.set_figwidth(15)
+    fig.suptitle(area + " parameter values")
     
-    colors = sns.color_palette("muted")
     clusters = []
    
     for i in range(len(all_params)):
@@ -131,16 +149,18 @@ def param_values(df, all_params, comp_num, area):
         param = all_params[i]
         param_df = df[[param, 'labels']]
         for j in range(comp_num):
-            clusters.append(j)
+            clusters.append('Cluster ' + str(j))
             cluster_units = param_df.loc[param_df['labels'] == j]
             mean_param = np.mean(cluster_units[param])
             sem_param = stats.sem(cluster_units[param])
-            ax.errorbar(x=0, y=mean_param, yerr=sem_param, fmt ='o', color = colors[j])
+            ax.errorbar(x=0, y=mean_param, yerr=sem_param, fmt ='o', color = c_palette[j])
             ax.set_title(param)
    
-    plt.legend(clusters)
-    plt.title(area + " parameter values")
+    plt.legend(clusters, loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.tight_layout()
     plt.savefig('/home/ehua/clustering/090623_data/figures/{}_param_values.png'.format(area))
+
+    plt.close()
     
 def psth(df, comp_num, blockRates, trialRates):
     time_vec = np.linspace(-1, 1.95, 60)
@@ -158,32 +178,37 @@ def psth(df, comp_num, blockRates, trialRates):
         ax.plot(time_vec, np.mean(trialRates[cluster_units_idx, :], axis = 0), color="cyan", linewidth = 2)
     
     fig.legend(["block", "trial"])
+
+    plt.close()
     
-def pev_plot(data, labels, comp_num, area, label_type):
+def pev_plot(data, labels, comp_num, area, label_type, c_palette):
     plt.figure()
     #fig, axs = plt.subplots(comp_num, 1)
     #fig.tight_layout()
-    colors = sns.color_palette("muted")
     clusters = []
     time_vec = np.linspace(-1, 0.5, 30)
     
     for i in range(comp_num):
         #ax = axs[i]
-        clusters.append(i)
+        clusters.append('Cluster ' + str(i))
         cluster_units = labels == i
         
         data_mean = np.mean(data[cluster_units.to_numpy().flatten(), :], axis = 0)
-        plt.plot(time_vec, data_mean, color=colors[i])
+        plt.plot(time_vec, data_mean, color=c_palette[i])
         
         sems = stats.sem(data)
-        plt.fill_between(time_vec, data_mean-sems, data_mean+sems,
-                     alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848')
+        # plt.fill_between(time_vec, data_mean-sems, data_mean+sems,
+        #              alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848', label="SEM")
     
     plt.title(area + ' PEV plot for ' + label_type)
+    plt.legend(clusters, loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.xlabel('Time Relative to Sample Onset (s)')
+    plt.ylabel('Percent Explained Variance')
+    plt.tight_layout()
     plt.savefig('/home/ehua/clustering/090623_data/figures/{}_PEV_{}.png'.format(area, label_type))
-    plt.legend(clusters)
+    plt.close()
 
-def feat_reduction(df, min_labels, area):
+def feat_reduction(df, min_labels, area, palette):
     '''
     Reduces N-d data to a 2-d feature space using TSNE method.
         
@@ -214,8 +239,11 @@ def feat_reduction(df, min_labels, area):
         df_tsne = pd.DataFrame(df_embedded, columns=['comp1', 'comp2'])
         df_tsne["label"] = min_labels
         
-        tsne_plot(ax, perplexity, df_tsne, area)
+        tsne_plot(ax, perplexity, df_tsne, area, palette)
 
+    fig.suptitle('TSNE at different perplexities for Area ' + area)
+    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_TSNE.png'.format(area))
+    plt.close()
 
 def raster(area, labels, cluster, cond_data, cond_type, unit_num, cluster_units):
     '''
@@ -230,8 +258,9 @@ def raster(area, labels, cluster, cond_data, cond_type, unit_num, cluster_units)
         Output: scatterplot of data in 2-d space.
 
     '''
-    fig, axs = plt.subplots(math.ceil(unit_num/10), 10)
+    fig, axs = plt.subplots(math.ceil(unit_num/10), 10, figsize=(30,30))
     fig.suptitle('Raster Plot of Spikes for ' + cond_type + ' in ' + area)
+
     cond_name = str(cond_type + 'Info')
     ax_count = 0
 
@@ -268,50 +297,59 @@ def raster(area, labels, cluster, cond_data, cond_type, unit_num, cluster_units)
 
             spikes.plot_raster(df[0], ax=ax)
 
-            last1Trial = df['blockType'].where(df['blockType']==1.0).last_valid_index()
-            last2Trial = df['blockType'].where(df['blockType']==2.0).last_valid_index()
-            plt.axhspan(0, last1Trial, facecolor='b', alpha=0.3)
-            plt.axhspan(last1Trial, last2Trial, facecolor='m', alpha=0.3)
+            last1Trial = df['blockType'].where(df['blockType']==0).last_valid_index()
+            last2Trial = df['blockType'].where(df['blockType']==1).last_valid_index()
+            ax.axhspan(0, last1Trial, facecolor='b', alpha=0.3)
+            ax.axhspan(last1Trial, last2Trial, facecolor='m', alpha=0.3)
     
         ax_count += 1
 
-def depth_analysis(depths, labels, counts, area):
-    depths = depths.rename(columns={"0": "depth"})
-    labels = labels.rename(columns={"0": "label"})
+    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_{}_raster_{}.png'.format(area, cluster, cond_type))
+
+    plt.close()
+
+def depth_analysis(depths, labels, comp_num, area, c_palette, jitter = 'no_jitter'):
+    depths = depths.rename(columns={"0": "Depth (relative to L4)"})
+    labels = labels.rename(columns={"0": "Label"})
     df = pd.concat([depths, labels], axis=1)
     
     fig, ax = plt.subplots(figsize=(19,19))
-    df.label = df.label.astype("category")
-    sns.swarmplot(data=df, x="label", y="depth", palette='muted', ax=ax)
+    df.Label = df.Label.astype("category")
+    sns.swarmplot(data=df, x="Label", y="Depth (relative to L4)", palette=c_palette, ax=ax)
 
     # weights = np.ones(len(labels))
     # for i in range(len(labels)):
     #     weights[i] = 1/counts[labels['label'][i]]
 
     # sns.histplot(data=df, x="depth", hue="label", multiple="stack", weights = weights, palette='muted')
+
+    clusters = []
+    for i in range(comp_num):
+        clusters.append('Cluster ' + str(i))
     
-    plt.title(area + 'Depth Distribution per Cluster')
-    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_cluster_depth_nojitter.png'.format(area))
+    plt.title(area + ' Depth Distribution per Cluster')
+    plt.legend(clusters, loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.tight_layout()
+    plt.savefig('/home/ehua/clustering/090623_data/figures/{}_cluster_depth_{}.png'.format(area, jitter))
+
+    plt.close()
 
 def main():
-    areas = ['7A', 'V4', 'LIP', 'PFC']
-    pev_types = ['samp', 'pred']
-    
+    areas = ['7A', 'LIP', 'V4']
+    pev_types = ['samp', 'pred', 'unpredSamp']
+    c_palette = sns.color_palette('colorblind')
 
-    for area in ['LIP']:
-        #feat_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area), index_col = 0)
+    for area in areas:
+        feat_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_df.csv'.format(area), index_col = 0)
         waves_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_waves.csv'.format(area), index_col = 0)
         waves = waves_df.to_numpy()
         waves_ptp = waves.ptp(axis = 0)
         waves_norm = np.divide(waves, waves_ptp)
 
-        #spikes_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_spikes.csv'.format(area), index_col = 0)
-        #spikes = spikes_df.to_numpy()
-
-        # jitter_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_depths_jitter.csv'.format(area), index_col = 0)
-        # jitter = jitter_df.to_numpy()
-        # depths_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_depths.csv'.format(area), index_col = 0)
-        # depths = depths_df.to_numpy()
+        jitter_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_depths_jitter.csv'.format(area), index_col = 0)
+        jitter = jitter_df.to_numpy()
+        depths_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_depths.csv'.format(area), index_col = 0)
+        depths = depths_df.to_numpy()
 
         
         all_params = ['troughToPeak', 'repolTime', 'meanRates', 'CV', 'LV']
@@ -320,32 +358,34 @@ def main():
         comp_num = max(labels['0']+1)
         counts = cluster_count(labels, comp_num)
         
-        #depth_analysis(depths_df, labels, counts, area)
+        # depth_analysis(depths_df, labels, comp_num, area, c_palette)
+        # depth_analysis(jitter_df, labels, comp_num, area, c_palette, jitter = 'jitter')
         
-        #feat_reduction(feat_df, labels, area)
+        #feat_reduction(feat_df, labels, area, c_palette)
         
-        # outliers_df = outlier_id(labels_df, comp_num)
-        # plot_avg_wave(waves_norm, outliers_df, comp_num, area)
-        # pairplot(labels_df, outliers_df, comp_num, area)
+        outliers_df = outlier_id(labels_df, comp_num)
+        plot_avg_wave(waves_norm, outliers_df, comp_num, area, c_palette)
+        # pairplot(labels_df, outliers_df, comp_num, area, c_palette)
         
-        # area_dist(labels, comp_num, area)
-        # param_values(labels_df, all_params, comp_num, area)
+        # area_dist(labels, comp_num, area, c_palette)
+        # param_values(labels_df, all_params, comp_num, area, c_palette)
 
         #psth(labels_df, comp_num, allBlockRates, allTrialRates)
         
-        for pev_type in pev_types:
-            pev_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_PEV_{}.csv'.format(area, pev_type), index_col = 0)
-            pev_data = pev_df.to_numpy()
+        # for pev_type in pev_types:
+        #     pev_df = pd.read_csv('/home/ehua/clustering/090623_data/{}_PEV_{}.csv'.format(area, pev_type), index_col = 0)
+        #     pev_data = pev_df.to_numpy()
             
-            pev_plot(pev_data, labels, comp_num, area, pev_type)
+        #     pev_plot(pev_data, labels, comp_num, area, pev_type, c_palette)
 
-        for cond_type in pev_types:
-            cluster = 4
-            cond_data = pd.read_csv('/home/ehua/clustering/090623_data/{}_PEV_{}.csv'.format(area, cond_type), index_col = 0)
+        # for cond_type in pev_types:
+        #     # for cluster in range(comp_num):
+        #         cluster = 6
+        #         cond_data = pd.read_csv('/home/ehua/clustering/090623_data/{}_PEV_{}.csv'.format(area, cond_type), index_col = 0)
 
-            cluster_units = labels.loc[labels['0'] == cluster]
-            unit_num = cluster_units.size
-            raster(area, labels, cluster, cond_data, cond_type, unit_num, cluster_units)
+        #         cluster_units = labels.loc[labels['0'] == cluster]
+        #         unit_num = cluster_units.size
+        #         raster(area, labels, cluster, cond_data, cond_type, unit_num, cluster_units)
 
 if __name__ == "__main__":
     main()

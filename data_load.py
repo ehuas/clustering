@@ -99,21 +99,22 @@ def load_osc_data(path):
 def concat_sessions(paths, area):
     comb = pd.DataFrame(columns=['meanRates', 'troughToPeak', 'repolTime', 'CV', 'LV'])
     PEV_samp_concat = np.empty((0, 30))
-    PEV_pred_concat = np.empty((0, 30))
-    align_waves_concat = np.empty((470, 0))
-    depths_concat = np.empty((0, ))
-    pred_concat = np.empty((0, ))
-    samp_concat = np.empty((0, ))
+    #PEV_pred_concat = np.empty((0, 30))
+    #align_waves_concat = np.empty((470, 0))
+    # depths_concat = np.empty((0, ))
+    # jitter_concat = np.empty((0, ))
+    #pred_concat = np.empty((0, ))
+    #samp_concat = np.empty((0, ))
     unit_count = 0
 
-    PEV_unpredSamp_concat = np.empty((0, 30))
+    #PEV_unpredSamp_concat = np.empty((0, 30))
     
     for path in paths:
         spike_times, _, unit_info, trial_info, session_info, spike_waves, spike_waves_schema = load_data(path)
         area_spike_times, area_idx = select_area(unit_info, spike_times, area)
         area_spike_waves = spike_waves[:, area_idx]
         
-        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, _, _, _, predInfo, sampInfo, depths, _, _ = \
+        validTrials, validNeurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, _, _, _, _, sampInfo, _, _, _, _ = \
             preProcessing(area_spike_times, 
                           trial_info, 
                           session_info, 
@@ -129,23 +130,24 @@ def concat_sessions(paths, area):
             unit_count += len(validNeurons)
             features = featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates)
             comb = pd.concat([comb, features], ignore_index=True)
-            #pev_samp = pev_func(rates, sampInfo)
-            pev_pred = pev_func(rates, predInfo)
+            pev_samp = pev_func(rates, sampInfo)
+            #pev_pred = pev_func(rates, predInfo)
            
-            #PEV_samp_concat = np.concatenate((PEV_samp_concat, np.squeeze(pev_samp, axis=0)), axis = 0)
-            PEV_pred_concat = np.concatenate((PEV_pred_concat, np.squeeze(pev_pred, axis=0)), axis = 0)
+            PEV_samp_concat = np.concatenate((PEV_samp_concat, np.squeeze(pev_samp, axis=0)), axis = 0)
+            #PEV_pred_concat = np.concatenate((PEV_pred_concat, np.squeeze(pev_pred, axis=0)), axis = 0)
 
             # pev_unpredSamp = pev_func(rates[trial_trials, :, :], unpredSampInfo)
             # PEV_unpredSamp_concat = np.concatenate((PEV_unpredSamp_concat, np.squeeze(pev_unpredSamp, axis=0)), axis = 0)
 
-            align_waves_concat = np.concatenate((align_waves_concat, meanAlignWaves), axis = 1)
+            # align_waves_concat = np.concatenate((align_waves_concat, meanAlignWaves), axis = 1)
 
-            depths_concat = np.concatenate((depths_concat, depths), axis = 0)
+            # depths_concat = np.concatenate((depths_concat, depths), axis = 0)
+            # jitter_concat = np.concatenate((jitter_concat, jitter_depths), axis = 0)
 
-            pred_concat = np.concatenate((pred_concat, predInfo.to_numpy()), axis = 0)
-            samp_concat = np.concatenate((samp_concat, sampInfo.to_numpy()), axis = 0)
+            # pred_concat = np.concatenate((pred_concat, predInfo.to_numpy()), axis = 0)
+            # samp_concat = np.concatenate((samp_concat, sampInfo.to_numpy()), axis = 0)
 
-    return comb, PEV_pred_concat, align_waves_concat, depths_concat, pred_concat, samp_concat
+    return PEV_samp_concat
 
 
 def osc_concat(paths, areas):
@@ -181,11 +183,12 @@ def main():
                 f = os.path.join(directory, filename)
                 paths.append(f)
     
-    areas = ['vlPFC', 'dlPFC', '7A', 'V4', 'LIP']
-        
-        #comb, PEV_pred, waves, depths, pred, samp = concat_sessions(paths, area)
+    areas = ['7A']
 
     osc_concat(paths, areas)
+    
+    #for area in areas:
+        #PEV_samp = concat_sessions(paths, area)
 
         # unpredSamp_df = pd.DataFrame(PEV_samp)
         # unpredSamp_df.to_csv('/home/ehua/clustering/090623_data/{}_PEV_unpredSamp.csv'.format(area))
@@ -203,7 +206,10 @@ def main():
         # pred_df.to_csv('/home/ehua/clustering/090623_data/{}_PEV_pred.csv'.format(area))
 
         # depths_df = pd.DataFrame(depths)
-        # depths_df.to_csv('/home/ehua/clustering/090623_data/{}_depths_jitter.csv'.format(area))
+        # depths_df.to_csv('/home/ehua/clustering/090623_data/{}_depths.csv'.format(area))
+
+        # jitter_df = pd.DataFrame(jitter)
+        # jitter_df.to_csv('/home/ehua/clustering/090623_data/{}_depths_jitter.csv'.format(area))
 
         # pred_df = pd.DataFrame(pred)
         # pred_df.to_csv('/home/ehua/clustering/090623_data/{}_pred.csv'.format(area))

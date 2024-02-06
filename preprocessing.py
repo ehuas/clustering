@@ -123,14 +123,15 @@ def depth(neurons_keep, unit_info, jitter = True):
         ### Scale Andre's data
         depths = (unit_info['betaGammaDepth'][neurons_keep])/1000
     
-    if jitter:
-        ### Create random vector of jitter
-        x = pd.Series(np.random.uniform(low = -0.02, high = 0.02, size = len(depths)))
+    ### Create random vector of jitter
+    x = pd.Series(np.random.uniform(low = -0.02, high = 0.02, size = len(depths)))
 
-        ### Add jitter to original depths. Fill nan values with -3.
-        depths = x.add(depths.reset_index(drop=True), fill_value = -3)
+    ### Add jitter to original depths. Fill nan values with -3.
+    jitter_depths = x.add(depths.reset_index(drop=True), fill_value = -3)
     
-    return depths
+    depths = depths.fillna(-3)
+    
+    return depths, jitter_depths
 
 def rateData(time_data):
     '''
@@ -285,7 +286,7 @@ def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_wave
     waves_data = waves_data[:, passed_neurons]
     meanAlignWaves = meanAlignWaves[:, passed_neurons]
 
-    depths = depth(passed_neurons, unit_info)
+    depths, jitter_depths = depth(passed_neurons, unit_info)
     
     meanRates, rates = rateData(time_data)
     meanNeuronRate = np.mean(rates, axis=0)
@@ -294,7 +295,7 @@ def preProcessing(spike_times, trial_info, session_info, spike_waves, spike_wave
     
     ISIs = isiData(time_data)
     
-    return trials_keep, passed_neurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, meanNeuronRate, blockRates, trialRates, predInfo, sampInfo, depths, unpredSampInfo, trial_trials
+    return trials_keep, passed_neurons, meanRates, ISIs, meanAlignWaves, smpRate, rates, meanNeuronRate, blockRates, trialRates, predInfo, sampInfo, depths, jitter_depths, unpredSampInfo, trial_trials
 
 def coupling(area_lfp, area_idx, depth_var, electrode_info, unit_info, spike_times, area, session, smp_rate):
     probeIDs = electrode_info['probeID'][area_idx].unique()
@@ -346,13 +347,10 @@ def coupling(area_lfp, area_idx, depth_var, electrode_info, unit_info, spike_tim
             np.save('/home/ehua/clustering/090623_data/osc/{}_phi_deep_{}_{}_{}'.format(area, session, probeID, unit), phi_deep)
 
             sup_path = '/home/ehua/clustering/090623_data/figures/{}_spec_sup_{}_{}_{}'.format(area, session, probeID, unit)
-            deep_path = '/home/ehua/clustering/090623_data/figures/{}_spec_sup_{}_{}_{}'.format(area, session, probeID, unit)
+            deep_path = '/home/ehua/clustering/090623_data/figures/{}_spec_deep_{}_{}_{}'.format(area, session, probeID, unit)
 
             sup_img, sup_ax = spectra.plot_spectrogram(timepts_sup, freqs_sup, np.squeeze(osc_sup), sup_path, area, session, probeID, unit)
-            deep_imag, deep_ax = spectra.plot_spectrogram(timepts_deep, freqs_deep, np.squeeze(osc_deep), deep_path, area, session, probeID, unit)
-
-        # np.save('/home/ehua/clustering/090623_data/osc/{}_phi_sup_session_{}_unit_{}.csv'.format(area, session, i), phi_sup)
-        # np.save('/home/ehua/clustering/090623_data/osc/{}_phi_deep_session_{}_unit_{}.csv'.format(area, session, i), phi_deep)
+            deep_img, deep_ax = spectra.plot_spectrogram(timepts_deep, freqs_deep, np.squeeze(osc_deep), deep_path, area, session, probeID, unit)
 
 def featExtract(meanRates, ISIs, meanAlignWaves, smpRate, rates):    
     '''
